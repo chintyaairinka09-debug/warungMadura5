@@ -1,0 +1,18 @@
+WARUNGMADURA ADMIN - QUICK INSTALL
+
+1. Extract the application folder into C:\xampp\htdocs\ (for example: C:\xampp\htdocs\WarungMadura\)
+2. In phpMyAdmin, import database\db_warungmadura.sql (if you have not imported it yet).
+3. If the database was imported earlier, import database\tambah_akun_demo_user.sql to add the demo customer account.
+4. Check config\config.php: DB_NAME=db_warungmadura, DB_USER=root, DB_PASS blank for default XAMPP.
+5. Start Apache and MySQL in XAMPP.
+6. Open http://localhost/WarungMadura/ (replace WarungMadura with the application folder name)
+
+DEMO ADMIN: admin / AdminWM2026!
+DEMO KASIR: kasir / KasirWM2026!
+DEMO PELANGGAN / USER: userdemo / UserWM2026!
+
+Admin and Kasir are sent to the operations dashboard. Pelanggan/User is sent to a separate account portal showing member profile, simulated balances, and personal transaction history.
+
+Change demo passwords before using the application for real store operations. Admin can create and manage staff and customer login accounts from Pengguna & Hak Akses.
+
+For database errors, check that PHP's pdo_mysql extension is enabled and that MariaDB is running on the configured port.
