@@ -1,4 +1,23 @@
 document.addEventListener('DOMContentLoaded', () => {
+  if (window.JsBarcode) {
+    document.querySelectorAll('svg[data-barcode]').forEach((element) => {
+      const code = String(element.dataset.barcode || '').trim();
+      if (!code) return;
+      try {
+        window.JsBarcode(element, code, {
+          format: 'CODE128',
+          width: 1.5,
+          height: 42,
+          displayValue: true,
+          fontSize: 12,
+          margin: 4
+        });
+      } catch (_) {
+        element.textContent = code;
+      }
+    });
+  }
+
   document.querySelectorAll('.modal').forEach((modal) => {
     modal.addEventListener('show.bs.modal', () => {
       if (modal.parentElement !== document.body) document.body.append(modal);
@@ -30,12 +49,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const d = window.WM_DASHBOARD;
     const salesCanvas = document.getElementById('salesChart');
     if (salesCanvas) new Chart(salesCanvas, {
-      type: 'line', data: { labels: d.labels, datasets: [{ label: 'Penjualan', data: d.sales, borderColor: '#198754', backgroundColor: 'rgba(25,135,84,.12)', fill: true, tension: .38, borderWidth: 2.5, pointRadius: 3, pointHoverRadius: 5 }] },
-      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ' Rp ' + Number(ctx.raw).toLocaleString('id-ID') } } }, scales: { y: { beginAtZero: true, grid: { color: '#edf0ee' }, ticks: { callback: value => value >= 1000000 ? 'Rp ' + (value/1000000).toFixed(1) + 'jt' : 'Rp ' + (value/1000).toFixed(0) + 'rb' } }, x: { grid: { display: false } } } }
+      type: 'line', data: { labels: d.labels, datasets: [{ label: 'Penjualan', data: d.sales, borderColor: '#414b2d', backgroundColor: 'rgba(65,75,45,.14)', fill: true, tension: .38, borderWidth: 2.5, pointRadius: 3, pointHoverRadius: 5 }] },
+      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ' Rp ' + Number(ctx.raw).toLocaleString('id-ID') } } }, scales: { y: { beginAtZero: true, grid: { color: '#e8e1cf' }, ticks: { callback: value => value >= 1000000 ? 'Rp ' + (value/1000000).toFixed(1) + 'jt' : 'Rp ' + (value/1000).toFixed(0) + 'rb' } }, x: { grid: { display: false } } } }
     });
     const categoryCanvas = document.getElementById('categoryChart');
     if (categoryCanvas) {
-      const palette = ['#198754','#f3a847','#5578d8','#45a6a0','#9c77ca','#e47d7d','#7c9293'];
+      const palette = ['#414b2d','#e7c86d','#8a9066','#c49b4c','#747b4b','#b8a77c','#5c6444'];
       new Chart(categoryCanvas, { type: 'doughnut', data: { labels: d.categories, datasets: [{ data: d.counts, backgroundColor: palette, borderWidth: 0, hoverOffset: 5 }] }, options: { responsive: true, maintainAspectRatio: false, cutout: '70%', plugins: { legend: { display: false } } } });
       const legend = document.getElementById('categoryLegend');
       if (legend) legend.innerHTML = d.categories.map((name,i) => `<span><i style="background:${palette[i%palette.length]}"></i>${escapeHtml(name)} <b>${Number(d.counts[i]||0)}</b></span>`).join('');
@@ -55,6 +74,80 @@ document.addEventListener('DOMContentLoaded', () => {
     const cartJson = document.getElementById('cartJson');
     const checkoutButton = document.getElementById('checkoutButton');
     const formatMoney = value => 'Rp ' + Number(value).toLocaleString('id-ID');
+    const scanner = document.getElementById('posScanner');
+    const scanStatus = document.getElementById('scanStatus');
+    const memberSelect = document.getElementById('memberCustomer');
+    const customerType = document.getElementById('customerType');
+    const paymentMethodControl = document.getElementById('paymentMethod');
+    const danaQrisPanel = document.getElementById('danaQrisPanel');
+    const qrisDanaConfirmed = document.getElementById('qrisDanaConfirmed');
+    const confirmDanaPayment = document.getElementById('confirmDanaPayment');
+    const danaQrisStatus = document.getElementById('danaQrisStatus');
+
+    const normalizeScan = value => String(value || '').trim().replace(/[\s,\-:.]/g, '').toUpperCase();
+
+    const processScan = value => {
+      const code = normalizeScan(value);
+      if (!code) return;
+
+      const memberOption = memberSelect ? Array.from(memberSelect.options).find(option => {
+        if (normalizeScan(option.dataset.memberNumber) === code) return true;
+        const rfidValue = String(option.dataset.rfid || '').trim();
+        if (!rfidValue) return false;
+        const rfidParts = rfidValue.split(/[\s,]+/).filter(Boolean);
+        if (rfidParts.some(part => normalizeScan(part) === code)) return true;
+        return rfidParts.map(normalizeScan).join('') === code;
+      }) : null;
+      if (memberOption && memberOption.value) {
+        if (customerType) customerType.value = 'member';
+        customerType?.dispatchEvent(new Event('change'));
+        memberSelect.value = memberOption.value;
+        if (scanStatus) {
+          scanStatus.textContent = `Member dikenali: ${memberOption.textContent.trim()}`;
+          scanStatus.className = 'd-block mt-1 text-success';
+        }
+        scanner.value = '';
+        return;
+      }
+
+      const card = Array.from(productGrid.querySelectorAll('.pos-product-card')).find(item =>
+        normalizeScan(item.dataset.barcode) === code || normalizeScan(item.dataset.sku) === code
+      );
+      if (card) {
+        card.click();
+        if (scanStatus) {
+          scanStatus.textContent = `Produk ditambahkan: ${card.querySelector('.pos-product-name')?.textContent || code}`;
+          scanStatus.className = 'd-block mt-1 text-success';
+        }
+      } else if (scanStatus) {
+        scanStatus.textContent = `Kode tidak dikenali: ${code}`;
+        scanStatus.className = 'd-block mt-1 text-danger';
+      }
+      if (scanner) scanner.value = '';
+    };
+
+    scanner?.addEventListener('keydown', event => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        processScan(scanner.value);
+      }
+    });
+
+    let hardwareBuffer = '';
+    let hardwareLastTime = 0;
+    document.addEventListener('keydown', event => {
+      if (event.target === scanner) return;
+      if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement || event.target instanceof HTMLSelectElement) return;
+      const now = Date.now();
+      if (now - hardwareLastTime > 100) hardwareBuffer = '';
+      hardwareLastTime = now;
+      if (event.key === 'Enter') {
+        if (hardwareBuffer) processScan(hardwareBuffer);
+        hardwareBuffer = '';
+      } else if (event.key.length === 1) {
+        hardwareBuffer += event.key;
+      }
+    });
 
     const filterProducts = () => {
       const term = (search?.value || '').toLowerCase().trim();
@@ -76,7 +169,12 @@ document.addEventListener('DOMContentLoaded', () => {
       subtotalEl.textContent = formatMoney(total);
       totalEl.textContent = formatMoney(total);
       cartJson.value = JSON.stringify(rows);
-      checkoutButton.disabled = count === 0;
+      if (qrisDanaConfirmed) qrisDanaConfirmed.value = '0';
+      if (confirmDanaPayment) confirmDanaPayment.disabled = false;
+      const isQrisDana = paymentMethodControl?.value === 'qris_dana';
+      if (danaQrisPanel) danaQrisPanel.hidden = !isQrisDana;
+      checkoutButton.disabled = count === 0 || (isQrisDana && qrisDanaConfirmed?.value !== '1');
+      if (isQrisDana && danaQrisStatus) danaQrisStatus.textContent = 'Kasir wajib mengecek pembayaran masuk di aplikasi DANA Bisnis sebelum mengonfirmasi.';
       if (!cart.size) {
         cartItems.innerHTML = '<div class="cart-empty"><i class="bi bi-basket"></i><b>Keranjang masih kosong</b><span>Pilih produk di sebelah kiri untuk memulai transaksi.</span></div>';
         return;
@@ -88,6 +186,15 @@ document.addEventListener('DOMContentLoaded', () => {
           <div class="cart-item-total"><b>${formatMoney(item.price * item.qty)}</b><button type="button" class="remove-cart" data-cart-action="remove" data-id="${id}" aria-label="Hapus item"><i class="bi bi-x-lg"></i></button></div>
         </div>`).join('');
     };
+
+    paymentMethodControl?.addEventListener('change', () => renderCart());
+    confirmDanaPayment?.addEventListener('click', () => {
+      if (!cart.size || paymentMethodControl?.value !== 'qris_dana' || danaQrisPanel?.dataset.qrisReady !== '1') return;
+      qrisDanaConfirmed.value = '1';
+      confirmDanaPayment.disabled = true;
+      if (danaQrisStatus) danaQrisStatus.textContent = 'Kasir mengonfirmasi pembayaran telah masuk.';
+      checkoutButton.disabled = false;
+    });
 
     productGrid.addEventListener('click', event => {
       const card = event.target.closest('.pos-product-card');
@@ -118,7 +225,13 @@ document.addEventListener('DOMContentLoaded', () => {
       const cash = Number(document.getElementById('cashAmount')?.value || 0);
       let subtotal = 0; cart.forEach(i => subtotal += i.price * i.qty);
       if (method === 'tunai' && cash < subtotal) { event.preventDefault(); window.alert('Jumlah uang yang diterima masih kurang.'); }
-      else if (!window.confirm('Proses transaksi sebesar ' + formatMoney(subtotal) + '?')) event.preventDefault();
+      else if (method === 'qris_dana' && qrisDanaConfirmed?.value !== '1') { event.preventDefault(); window.alert('Pastikan dana masuk ke DANA Bisnis, lalu tekan "Konfirmasi dana diterima".'); }
+      else {
+        const message = method === 'qris_dana'
+          ? 'Selesaikan transaksi setelah pembayaran QRIS DANA diverifikasi masuk?'
+          : 'Proses transaksi sebesar ' + formatMoney(subtotal) + '?';
+        if (!window.confirm(message)) event.preventDefault();
+      }
     });
     renderCart();
   }
@@ -142,12 +255,17 @@ document.addEventListener('DOMContentLoaded', () => {
   const updatePayment = () => {
     if (!paymentMethod) return;
     const cash = paymentMethod.value === 'tunai';
+    const usesBalance = ['tabungan','ewallet'].includes(paymentMethod.value);
     if (cashField) cashField.hidden = !cash;
-    if (!cash && customerType && customerType.value !== 'member') {
+    if (usesBalance && customerType && customerType.value !== 'member') {
       customerType.value = 'member';
       updateCustomerType();
     }
-    if (paymentHint) paymentHint.innerHTML = cash ? '<i class="bi bi-info-circle me-1"></i>Masukkan uang yang diterima dari pelanggan.' : '<i class="bi bi-info-circle me-1"></i>Saldo pelanggan akan dipotong secara simulasi. Pastikan pelanggan terpilih dan saldo mencukupi.';
+    if (paymentHint) {
+      if (cash) paymentHint.innerHTML = '<i class="bi bi-info-circle me-1"></i>Masukkan uang yang diterima dari pelanggan.';
+      else if (usesBalance) paymentHint.innerHTML = '<i class="bi bi-info-circle me-1"></i>Saldo pelanggan akan dipotong secara simulasi. Pastikan pelanggan terpilih dan saldo mencukupi.';
+      else paymentHint.innerHTML = '<i class="bi bi-info-circle me-1"></i>QRIS DANA statis perlu diverifikasi manual oleh kasir di aplikasi DANA Bisnis.';
+    }
   };
   paymentMethod?.addEventListener('change', updatePayment); updatePayment();
 

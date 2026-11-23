@@ -24,7 +24,12 @@ $params=['q'=>$q,'cat'=>$cat,'status'=>$status];
     <?php foreach($products as $p): ?><tr>
         <?php $imageSrc = product_image_src($p['gambar']); ?>
         <td><div class="product-cell"><div class="product-thumb"><?php if ($imageSrc): ?><img src="<?= e($imageSrc) ?>" alt="Gambar <?= e($p['nama_produk']) ?>" loading="lazy"><?php else: ?><i class="bi bi-box-seam"></i><?php endif; ?></div><div><b><?= e($p['nama_produk']) ?></b><small><?= e($p['satuan']) ?></small></div></div></td>
-        <td><b class="small"><?= e($p['sku']) ?></b><small class="d-block text-muted"><?= e($p['barcode'] ?: 'Tanpa barcode') ?></small></td>
+        <td>
+            <b class="small"><?= e($p['sku']) ?></b>
+            <small class="d-block text-muted"><?= e($p['barcode'] ?: $p['sku']) ?></small>
+            <?php $barcodeCode = $p['barcode'] ?: $p['sku']; ?>
+            <svg class="product-barcode" data-barcode="<?= e($barcodeCode) ?>" role="img" aria-label="Barcode <?= e($barcodeCode) ?>"></svg>
+        </td>
         <td><b class="table-main"><?= e($p['nama_kategori']) ?></b></td>
         <td class="fw-semibold"><?= money($p['harga_jual']) ?></td><td><span class="stock-pill <?= (int)$p['stok'] <= (int)$p['stok_minimum']?'low':'' ?>"><?= (int)$p['stok'] ?> <?= e($p['satuan']) ?></span><small class="d-block text-muted">Min. <?= (int)$p['stok_minimum'] ?></small></td><td><?= status_badge($p['status_produk']) ?></td>
         <td class="text-end"><div class="table-actions">

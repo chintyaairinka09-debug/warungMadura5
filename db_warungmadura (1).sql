@@ -252,6 +252,7 @@ CREATE TABLE `tbl_pelanggan` (
   `id_pelanggan` int(10) UNSIGNED NOT NULL,
   `id_pengguna` int(10) UNSIGNED DEFAULT NULL,
   `no_member` varchar(30) NOT NULL,
+  `rfid_uid` varchar(80) DEFAULT NULL,
   `nama_pelanggan` varchar(120) NOT NULL,
   `no_hp` varchar(25) DEFAULT NULL,
   `email` varchar(120) DEFAULT NULL,
@@ -270,7 +271,7 @@ CREATE TABLE `tbl_pelanggan` (
 CREATE TABLE `tbl_pembayaran` (
   `id_pembayaran` bigint(20) UNSIGNED NOT NULL,
   `id_transaksi` bigint(20) UNSIGNED NOT NULL,
-  `metode_pembayaran` enum('tunai','tabungan','ewallet') NOT NULL,
+  `metode_pembayaran` enum('tunai','tabungan','ewallet','qris_dana') NOT NULL,
   `jumlah_bayar` decimal(14,2) NOT NULL,
   `status_pembayaran` enum('menunggu','berhasil','gagal','dikembalikan') NOT NULL DEFAULT 'menunggu',
   `referensi_simulasi` varchar(80) DEFAULT NULL,
@@ -365,12 +366,12 @@ INSERT INTO `tbl_produk` (`id_produk`, `id_kategori`, `id_merk`, `sku`, `barcode
 (2, 1, 3, 'WM-SMB-002', NULL, 'Minyak Goreng 1 Liter', NULL, 19000.00, 23000.00, 17, 'botol', 5, NULL, 'aktif', '2026-11-11 08:39:50', '2026-11-11 11:30:15'),
 (3, 1, 4, 'WM-SMB-003', NULL, 'Gula Pasir 1 Kg', NULL, 15000.00, 18000.00, 18, 'pack', 5, NULL, 'aktif', '2026-11-11 08:39:50', '2026-11-11 11:30:15'),
 (4, 1, 5, 'WM-SMB-004', NULL, 'Tepung Terigu 1 Kg', NULL, 11000.00, 13000.00, 20, 'pack', 5, NULL, 'aktif', '2026-11-11 08:39:50', NULL),
-(5, 2, 2, 'WM-MKN-001', NULL, 'Mi Instan Goreng', NULL, 2700.00, 3500.00, 50, 'pcs', 10, NULL, 'aktif', '2026-11-11 08:39:50', NULL),
-(6, 3, 6, 'WM-MNM-001', NULL, 'Teh Celup Isi 25', NULL, 9000.00, 12000.00, 20, 'box', 5, NULL, 'aktif', '2026-11-11 08:39:50', NULL),
-(7, 3, 7, 'WM-MNM-002', NULL, 'Kopi Bubuk 180 g', NULL, 14000.00, 18000.00, 19, 'pack', 5, NULL, 'aktif', '2026-11-11 08:39:50', '2026-11-11 11:05:17'),
-(8, 3, 8, 'WM-MNM-003', NULL, 'Susu UHT 1 Liter', NULL, 17000.00, 21000.00, 20, 'kotak', 5, NULL, 'aktif', '2026-11-11 08:39:50', NULL),
-(9, 4, 9, 'WM-PRW-001', NULL, 'Sabun Mandi Cair 250 ml', NULL, 3500.00, 5000.00, 18, 'pcs', 5, NULL, 'aktif', '2026-11-11 08:39:50', '2026-11-11 11:30:15'),
-(10, 5, NULL, 'WM-KBR-001', NULL, 'Sunlight Botol 675gr', NULL, 14000.00, 17501.00, 20, 'botol', 5, 'uploads/products/7cd1a2592baf1b5f4473d327ab693beb.jpg', 'aktif', '2026-11-11 08:39:50', '2026-11-11 10:54:16');
+(5, 2, 2, 'WM-MKN-001', '5285000390602', 'IndoMie Goreng', NULL, 2700.00, 3500.00, 50, 'pcs', 10, NULL, 'aktif', '2026-11-11 08:39:50', NULL),
+(6, 3, 6, 'WM-MNM-001', '8886007811113', 'Teh Poci Celup Isi 25', NULL, 9000.00, 12000.00, 20, 'box', 5, NULL, 'aktif', '2026-11-11 08:39:50', NULL),
+(7, 3, 7, 'WM-MNM-002', '8991002102132', 'Kopi Bubuk 180 g', NULL, 14000.00, 18000.00, 19, 'pack', 5, NULL, 'aktif', '2026-11-11 08:39:50', '2026-11-11 11:05:17'),
+(8, 3, 8, 'WM-MNM-003', '8998009010613', 'Ultra Milk Fullcream 1000ml', NULL, 17000.00, 21000.00, 20, 'kotak', 5, NULL, 'aktif', '2026-11-11 08:39:50', NULL),
+(9, 4, 9, 'WM-PRW-001', '8998866618243', 'Giv White - Mulberry & Collagen 400ml', NULL, 3500.00, 5000.00, 18, 'pcs', 5, NULL, 'aktif', '2026-11-11 08:39:50', '2026-11-11 11:30:15'),
+(10, 5, NULL, 'WM-KBR-001', '8999999615482', 'Sunlight Pencuci Piring 700 ml', NULL, 14000.00, 17501.00, 20, 'botol', 5, 'uploads/products/7cd1a2592baf1b5f4473d327ab693beb.jpg', 'aktif', '2026-11-11 08:39:50', '2026-11-11 10:54:16');
 
 -- --------------------------------------------------------
 
@@ -427,7 +428,7 @@ CREATE TABLE `tbl_transaksi` (
   `jenis_transaksi` enum('online','toko') NOT NULL DEFAULT 'toko',
   `status_pesanan` enum('menunggu','diproses','siap_diambil','selesai','dibatalkan') NOT NULL DEFAULT 'menunggu',
   `status_pembayaran` enum('belum_bayar','menunggu','lunas','gagal','dikembalikan') NOT NULL DEFAULT 'belum_bayar',
-  `metode_pembayaran` enum('tunai','tabungan','ewallet') DEFAULT NULL,
+  `metode_pembayaran` enum('tunai','tabungan','ewallet','qris_dana') DEFAULT NULL,
   `metode_penerimaan` enum('ambil_toko','diantar') NOT NULL DEFAULT 'ambil_toko',
   `tanggal_transaksi` datetime NOT NULL DEFAULT current_timestamp(),
   `subtotal` decimal(14,2) NOT NULL DEFAULT 0.00,

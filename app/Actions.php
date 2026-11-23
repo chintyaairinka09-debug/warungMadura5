@@ -35,6 +35,7 @@ final class Actions
                 case 'save_user': self::saveUser($db, $userId); break;
                 case 'toggle_user': self::toggleUser($db, $userId); break;
                 case 'save_supplier': self::saveSupplier($db, $userId); break;
+                case 'save_dana_qris': self::saveDanaQris(); break;
                 case 'receive_stock': self::receiveStock($db, $userId); break;
                 case 'checkout': self::checkout($db, $userId); break;
                 case 'update_order_status': self::updateOrderStatus($db, $userId); break;
@@ -77,7 +78,7 @@ final class Actions
         $stock = max(0, (int)($_POST['stok'] ?? 0));
         $minimum = max(0, (int)($_POST['stok_minimum'] ?? 5));
         $unit = trim((string)($_POST['satuan'] ?? 'pcs')) ?: 'pcs';
-        $barcode = trim((string)($_POST['barcode'] ?? '')) ?: null;
+        $barcode = trim((string)($_POST['barcode'] ?? '')) ?: $sku;
         $description = trim((string)($_POST['deskripsi'] ?? '')) ?: null;
         $image = trim((string)($_POST['gambar'] ?? '')) ?: null;
         if ($image !== null && product_image_src($image) === null) {
@@ -143,6 +144,41 @@ final class Actions
         return 'uploads/products/' . $filename;
     }
 
+    private static function saveDanaQris(): void
+    {
+        self::adminOnly();
+        $file = $_FILES['qris_file'] ?? null;
+        if (!$file || ($file['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
+            self::back('transactions', 'Pilih gambar QRIS DANA terlebih dahulu.', 'warning');
+        }
+        if (($file['error'] ?? UPLOAD_ERR_OK) !== UPLOAD_ERR_OK) {
+            self::back('transactions', 'Gambar QRIS gagal diunggah. Pilih ulang file dan coba kembali.', 'warning');
+        }
+        if ((int)($file['size'] ?? 0) > 5 * 1024 * 1024 || empty($file['tmp_name']) || !is_uploaded_file($file['tmp_name'])) {
+            self::back('transactions', 'File QRIS tidak valid atau melebihi batas 5 MB.', 'warning');
+        }
+
+        $imageInfo = getimagesize($file['tmp_name']);
+        $mime = (new finfo(FILEINFO_MIME_TYPE))->file($file['tmp_name']);
+        $extensions = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp'];
+        if (!$imageInfo || !isset($extensions[$mime]) || ($imageInfo['mime'] ?? '') !== $mime) {
+            self::back('transactions', 'Format gambar QRIS harus JPG, PNG, atau WebP.', 'warning');
+        }
+
+        $directory = __DIR__ . '/../uploads/qris';
+        if (!is_dir($directory) && !mkdir($directory, 0755, true) && !is_dir($directory)) {
+            self::back('transactions', 'Folder penyimpanan QRIS tidak dapat dibuat.', 'danger');
+        }
+        $filename = 'dana-qris.' . $extensions[$mime];
+        if (!move_uploaded_file($file['tmp_name'], $directory . '/' . $filename)) {
+            self::back('transactions', 'Gambar QRIS tidak dapat disimpan. Periksa izin folder uploads/qris.', 'danger');
+        }
+        if (file_put_contents($directory . '/current.txt', $filename, LOCK_EX) === false) {
+            self::back('transactions', 'QRIS tersimpan tetapi penunjuk file gagal diperbarui.', 'danger');
+        }
+        self::back('transactions', 'QRIS DANA berhasil diperbarui.');
+    }
+
     private static function deactivateProduct(PDO $db, int $userId): void
     {
         self::adminOnly();
@@ -183,7 +219,7 @@ final class Actions
             $check = $db->prepare('SELECT COUNT(*) FROM tbl_produk WHERE sku=?'); $check->execute([$sku]);
             if ((int)$check->fetchColumn() > 0) { $skipped++; continue; }
             $stmt = $db->prepare('INSERT INTO tbl_produk (id_kategori,id_merk,sku,barcode,nama_produk,deskripsi,harga_beli,harga_jual,stok,satuan,stok_minimum,gambar) VALUES (?,NULL,?,?,?,?,?,?,?,?,?,?)');
-            $stmt->execute([(int)$catId, $sku, $get('barcode') ?: null, $name, $get('deskripsi') ?: null, (float)$get('harga_beli','0'), $sell, max(0,(int)$get('stok','0')), $get('satuan','pcs') ?: 'pcs', max(0,(int)$get('stok_minimum','5')), $get('gambar') ?: null]);
+            $stmt->execute([(int)$catId, $sku, $get('barcode') ?: $sku, $name, $get('deskripsi') ?: null, (float)$get('harga_beli','0'), $sell, max(0,(int)$get('stok','0')), $get('satuan','pcs') ?: 'pcs', max(0,(int)$get('stok_minimum','5')), $get('gambar') ?: null]);
             $productId = (int)$db->lastInsertId();
             $initialStock = max(0, (int)$get('stok','0'));
             if ($initialStock > 0) {
@@ -235,13 +271,14 @@ final class Actions
         $address = trim((string)($_POST['alamat'] ?? '')) ?: null;
         $city = trim((string)($_POST['kota'] ?? '')) ?: null;
         $member = trim((string)($_POST['no_member'] ?? ''));
+        $rfidUid = trim((string)($_POST['rfid_uid'] ?? '')) ?: null;
         if ($name === '') self::back('customers', 'Nama pelanggan wajib diisi.', 'warning');
         if ($id > 0) {
-            $db->prepare('UPDATE tbl_pelanggan SET nama_pelanggan=?,no_hp=?,email=?,alamat=?,kota=? WHERE id_pelanggan=?')->execute([$name,$phone,$email,$address,$city,$id]);
+            $db->prepare('UPDATE tbl_pelanggan SET rfid_uid=?,nama_pelanggan=?,no_hp=?,email=?,alamat=?,kota=? WHERE id_pelanggan=?')->execute([$rfidUid,$name,$phone,$email,$address,$city,$id]);
             log_activity($db,$userId,'edit_pelanggan','tbl_pelanggan',$id,'Mengubah pelanggan '.$name);
         } else {
             if ($member === '') $member = 'WM' . date('ymd') . strtoupper(bin2hex(random_bytes(2)));
-            $db->prepare('INSERT INTO tbl_pelanggan (no_member,nama_pelanggan,no_hp,email,alamat,kota) VALUES (?,?,?,?,?,?)')->execute([$member,$name,$phone,$email,$address,$city]);
+            $db->prepare('INSERT INTO tbl_pelanggan (no_member,rfid_uid,nama_pelanggan,no_hp,email,alamat,kota) VALUES (?,?,?,?,?,?,?)')->execute([$member,$rfidUid,$name,$phone,$email,$address,$city]);
             $customerId = (int)$db->lastInsertId();
             foreach (['tabungan','ewallet'] as $type) {
                 $db->prepare('INSERT INTO tbl_saldo_pelanggan (id_pelanggan,jenis_saldo,saldo) VALUES (?,?,0)')->execute([$customerId,$type]);
@@ -408,8 +445,19 @@ final class Actions
             $customerId = (int)$customerId;
         }
         $method = (string)($_POST['metode_pembayaran'] ?? 'tunai');
-        if (!in_array($method,['tunai','tabungan','ewallet'],true)) self::back('transactions','Metode pembayaran tidak valid.','warning');
-        if ($method !== 'tunai' && !$customerId) self::back('transactions','Pembayaran saldo membutuhkan pelanggan terdaftar.','warning');
+        if (!in_array($method,['tunai','tabungan','ewallet','qris_dana'],true)) self::back('transactions','Metode pembayaran tidak valid.','warning');
+        if (in_array($method,['tabungan','ewallet'],true) && !$customerId) self::back('transactions','Pembayaran saldo membutuhkan pelanggan terdaftar.','warning');
+        if ($method === 'qris_dana' && (string)($_POST['qris_dana_confirmed'] ?? '') !== '1') {
+            self::back('transactions','Kasir harus mengecek dana masuk dan mengonfirmasi pembayaran QRIS.','warning');
+        }
+        if ($method === 'qris_dana') {
+            $qrisDirectory = __DIR__ . '/../uploads/qris';
+            $pointer = $qrisDirectory . '/current.txt';
+            $filename = is_file($pointer) ? trim((string)file_get_contents($pointer)) : '';
+            if (!preg_match('/\Adana-qris\.(?:jpg|png|webp)\z/i', $filename) || !is_file($qrisDirectory . '/' . $filename)) {
+                self::back('transactions','QRIS DANA Merchant belum diunggah oleh Admin.','warning');
+            }
+        }
         $cash = max(0,(float)($_POST['jumlah_bayar'] ?? 0));
         $normalized = [];
         foreach ($cart as $item) {
@@ -433,12 +481,14 @@ final class Actions
         if ($method === 'tunai') {
             if ($cash < $total) throw new RuntimeException('Uang pembayaran kurang dari total belanja.');
             $paid = $cash; $change = $cash - $total;
-        } else {
+        } elseif (in_array($method,['tabungan','ewallet'],true)) {
             $balance = $db->prepare('SELECT id_saldo,saldo FROM tbl_saldo_pelanggan WHERE id_pelanggan=? AND jenis_saldo=? AND status_saldo="aktif" FOR UPDATE');
             $balance->execute([$customerId,$method]); $wallet = $balance->fetch();
             if (!$wallet) throw new RuntimeException('Saldo pelanggan untuk metode ini belum tersedia.');
             $balanceId = (int)$wallet['id_saldo']; $balanceBefore = (float)$wallet['saldo'];
             if ($balanceBefore < $total) throw new RuntimeException('Saldo pelanggan tidak mencukupi.');
+            $paid = $total; $change = 0.0;
+        } else {
             $paid = $total; $change = 0.0;
         }
         $code = 'WM-' . date('ymd-His') . '-' . random_int(100,999);
@@ -455,7 +505,7 @@ final class Actions
                 ->execute([$p['id_produk'],$userId,$transactionId,-$qty,$before,$after]);
         }
         $db->prepare('INSERT INTO tbl_pembayaran (id_transaksi,metode_pembayaran,jumlah_bayar,status_pembayaran,referensi_simulasi,diproses_oleh,waktu_pembayaran) VALUES (?,?,?,"berhasil",?,?,NOW())')
-            ->execute([$transactionId,$method,$paid,'SIM-' . strtoupper(bin2hex(random_bytes(4))),$userId]);
+            ->execute([$transactionId,$method,$paid,$method === 'qris_dana' ? null : 'SIM-' . strtoupper(bin2hex(random_bytes(4))),$userId]);
         if ($balanceId !== null) {
             $after = $balanceBefore - $total;
             $db->prepare('UPDATE tbl_saldo_pelanggan SET saldo=? WHERE id_saldo=?')->execute([$after,$balanceId]);

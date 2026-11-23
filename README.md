@@ -14,7 +14,7 @@ Website admin untuk sistem minimarket WarungMadura. Dibuat dengan PHP Native OOP
 - Supplier dan stok masuk: catat barang masuk satu atau beberapa produk sekaligus; stok dan riwayat mutasi diperbarui dalam transaksi SQL.
 - Kasir/POS: cari dan filter produk, keranjang, hitung total, pembayaran tunai/Tabungan/E-Wallet simulasi.
 - Laporan: filter tanggal, cari nama pelanggan atau kode transaksi, status pembayaran, pembaruan status pesanan, serta cetak ulang struk.
-- Struk thermal berukuran 80 × 297 mm.
+- Struk thermal berukuran 77 × 297 mm.
 - Responsive untuk desktop, tablet, dan ponsel.
 
 ## 1. Persyaratan
@@ -75,13 +75,13 @@ Produk tidak dihapus permanen. Admin menonaktifkan produk agar data transaksi la
 4. Nama kategori harus sama persis dengan data kategori di database. Kolom `nama_merk` dari template lama bersifat opsional dan diabaikan.
 5. Upload CSV. SKU yang sudah ada dilewati, bukan ditimpa.
 
-## 6. Cetak struk 80 × 297 mm
+## 6. Cetak struk 77 × 297 mm
 
-Buka Laporan Penjualan, klik **Cetak** pada transaksi. Jendela nota menyediakan tombol cetak dan mengatur ukuran halaman 80 × 297 mm. Di dialog print, pilih printer EPSON, orientasi Portrait, dan matikan header/footer browser bila opsi tersebut tersedia. Pastikan ukuran kertas 80 × 297 mm atau ukuran kustom yang sama sudah tersedia di driver printer.
+Buka Laporan Penjualan, klik **Cetak** pada transaksi. Jendela nota menyediakan tombol cetak dan mengatur ukuran halaman 77 × 297 mm. Di dialog print, pilih printer EPSON, orientasi Portrait, dan matikan header/footer browser bila opsi tersebut tersedia. Pastikan ukuran kertas 77 × 297 mm atau ukuran kustom yang sama sudah tersedia di driver printer.
 
 ## 7. Catatan penting
 
-- Tabungan dan E-Wallet hanya saldo virtual untuk simulasi pembelajaran; tidak ada uang sungguhan atau payment gateway.
+- Tabungan dan E-Wallet hanya saldo virtual. QRIS DANA di POS menggunakan gambar QRIS Merchant yang diunggah Admin; kasir harus memeriksa pembayaran di aplikasi DANA Bisnis dan mengonfirmasi secara manual. Integrasi status pembayaran otomatis belum tersedia.
 - Menu POS membuat transaksi toko dengan status lunas setelah validasi stok dan pembayaran. Pengurangan stok, detail transaksi, mutasi stok, dan mutasi saldo diproses dalam transaksi database agar konsisten.
 - Pembatalan transaksi lunas tidak disediakan dari form status sederhana karena harus disertai proses refund dan pengembalian stok yang terpisah.
 - Aplikasi ini adalah **website admin + kasir dengan portal akun pelanggan dasar**. Portal user belum menyediakan katalog belanja, keranjang, dan checkout online. Database sudah mempunyai tabel keranjang dan transaksi online sebagai fondasi pengembangan selanjutnya.

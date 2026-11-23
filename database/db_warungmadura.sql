@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS tbl_pelanggan (
   id_pelanggan INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   id_pengguna INT UNSIGNED NULL UNIQUE,
   no_member VARCHAR(30) NOT NULL UNIQUE,
+  rfid_uid VARCHAR(80) NULL UNIQUE,
   nama_pelanggan VARCHAR(120) NOT NULL,
   no_hp VARCHAR(25) NULL,
   email VARCHAR(120) NULL,
@@ -139,7 +140,7 @@ CREATE TABLE IF NOT EXISTS tbl_transaksi (
   jenis_transaksi ENUM('online','toko') NOT NULL DEFAULT 'toko',
   status_pesanan ENUM('menunggu','diproses','siap_diambil','selesai','dibatalkan') NOT NULL DEFAULT 'menunggu',
   status_pembayaran ENUM('belum_bayar','menunggu','lunas','gagal','dikembalikan') NOT NULL DEFAULT 'belum_bayar',
-  metode_pembayaran ENUM('tunai','tabungan','ewallet') NULL,
+  metode_pembayaran ENUM('tunai','tabungan','ewallet','qris_dana') NULL,
   metode_penerimaan ENUM('ambil_toko','diantar') NOT NULL DEFAULT 'ambil_toko',
   tanggal_transaksi DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   subtotal DECIMAL(14,2) NOT NULL DEFAULT 0.00,
@@ -182,7 +183,7 @@ CREATE TABLE IF NOT EXISTS tbl_detail_transaksi (
 CREATE TABLE IF NOT EXISTS tbl_pembayaran (
   id_pembayaran BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   id_transaksi BIGINT UNSIGNED NOT NULL UNIQUE,
-  metode_pembayaran ENUM('tunai','tabungan','ewallet') NOT NULL,
+  metode_pembayaran ENUM('tunai','tabungan','ewallet','qris_dana') NOT NULL,
   jumlah_bayar DECIMAL(14,2) NOT NULL,
   status_pembayaran ENUM('menunggu','berhasil','gagal','dikembalikan') NOT NULL DEFAULT 'menunggu',
   referensi_simulasi VARCHAR(80) NULL,
@@ -379,38 +380,38 @@ FROM tbl_kategori k JOIN tbl_merk m ON m.nama_merk='Segitiga Biru'
 WHERE k.nama_kategori='Sembako';
 
 INSERT IGNORE INTO tbl_produk
- (id_kategori, id_merk, sku, nama_produk, harga_beli, harga_jual, stok, satuan, stok_minimum)
-SELECT k.id_kategori, m.id_merk, 'WM-MKN-001', 'Mi Instan Goreng', 2700, 3500, 50, 'pcs', 10
+ (id_kategori, id_merk, sku, barcode, nama_produk, harga_beli, harga_jual, stok, satuan, stok_minimum)
+SELECT k.id_kategori, m.id_merk, 'WM-MKN-001', '5285000390602', 'IndoMie Goreng', 2700, 3500, 50, 'pcs', 10
 FROM tbl_kategori k JOIN tbl_merk m ON m.nama_merk='Indomie'
 WHERE k.nama_kategori='Makanan & Mi Instan';
 
 INSERT IGNORE INTO tbl_produk
- (id_kategori, id_merk, sku, nama_produk, harga_beli, harga_jual, stok, satuan, stok_minimum)
-SELECT k.id_kategori, m.id_merk, 'WM-MNM-001', 'Teh Celup Isi 25', 9000, 12000, 20, 'box', 5
+ (id_kategori, id_merk, sku, barcode, nama_produk, harga_beli, harga_jual, stok, satuan, stok_minimum)
+SELECT k.id_kategori, m.id_merk, 'WM-MNM-001', '8886007811113', 'Teh Poci Celup Isi 25', 9000, 12000, 20, 'box', 5
 FROM tbl_kategori k JOIN tbl_merk m ON m.nama_merk='SariWangi'
 WHERE k.nama_kategori='Minuman';
 
 INSERT IGNORE INTO tbl_produk
- (id_kategori, id_merk, sku, nama_produk, harga_beli, harga_jual, stok, satuan, stok_minimum)
-SELECT k.id_kategori, m.id_merk, 'WM-MNM-002', 'Kopi Bubuk 180 g', 14000, 18000, 20, 'pack', 5
+ (id_kategori, id_merk, sku, barcode, nama_produk, harga_beli, harga_jual, stok, satuan, stok_minimum)
+SELECT k.id_kategori, m.id_merk, 'WM-MNM-002', '8991002102132', 'Kopi Bubuk 180 g', 14000, 18000, 20, 'pack', 5
 FROM tbl_kategori k JOIN tbl_merk m ON m.nama_merk='Kapal Api'
 WHERE k.nama_kategori='Minuman';
 
 INSERT IGNORE INTO tbl_produk
- (id_kategori, id_merk, sku, nama_produk, harga_beli, harga_jual, stok, satuan, stok_minimum)
-SELECT k.id_kategori, m.id_merk, 'WM-MNM-003', 'Susu UHT 1 Liter', 17000, 21000, 20, 'kotak', 5
+ (id_kategori, id_merk, sku, barcode, nama_produk, harga_beli, harga_jual, stok, satuan, stok_minimum)
+SELECT k.id_kategori, m.id_merk, 'WM-MNM-003', '8998009010613', 'Ultra Milk Fullcream 1000ml', 17000, 21000, 20, 'kotak', 5
 FROM tbl_kategori k JOIN tbl_merk m ON m.nama_merk='Ultra Milk'
 WHERE k.nama_kategori='Minuman';
 
 INSERT IGNORE INTO tbl_produk
- (id_kategori, id_merk, sku, nama_produk, harga_beli, harga_jual, stok, satuan, stok_minimum)
-SELECT k.id_kategori, m.id_merk, 'WM-PRW-001', 'Sabun Mandi Cair 250 ml', 3500, 5000, 20, 'pcs', 5
+ (id_kategori, id_merk, sku, barcode, nama_produk, harga_beli, harga_jual, stok, satuan, stok_minimum)
+SELECT k.id_kategori, m.id_merk, 'WM-PRW-001', '8998866618243', 'Giv White - Mulberry & Collagen 400ml', 3500, 5000, 20, 'pcs', 5
 FROM tbl_kategori k JOIN tbl_merk m ON m.nama_merk='Lifebuoy'
 WHERE k.nama_kategori='Perawatan Diri';
 
 INSERT IGNORE INTO tbl_produk
- (id_kategori, id_merk, sku, nama_produk, harga_beli, harga_jual, stok, satuan, stok_minimum)
-SELECT k.id_kategori, m.id_merk, 'WM-KBR-001', 'Cairan Pencuci Piring 700 ml', 14000, 17000, 20, 'botol', 5
+ (id_kategori, id_merk, sku, barcode, nama_produk, harga_beli, harga_jual, stok, satuan, stok_minimum)
+SELECT k.id_kategori, m.id_merk, 'WM-KBR-001', '8999999615482', 'Sunlight Pencuci Piring 700 ml', 14000, 17000, 20, 'botol', 5
 FROM tbl_kategori k JOIN tbl_merk m ON m.nama_merk='Sunlight'
 WHERE k.nama_kategori='Kebersihan Rumah';
 

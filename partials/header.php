@@ -28,7 +28,7 @@ $flashMessage = take_flash();
     <title><?= e(ucwords(str_replace('_',' ',$current))) ?> · <?= e(APP_NAME) ?></title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB" crossorigin="anonymous">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.13.1/font/bootstrap-icons.min.css">
-    <link rel="stylesheet" href="<?= e(BASE_URL) ?>/assets/css/app.css?v=4">
+    <link rel="stylesheet" href="<?= e(BASE_URL) ?>/assets/css/app.css?v=7">
 </head>
 <body>
 <div class="app-shell">
