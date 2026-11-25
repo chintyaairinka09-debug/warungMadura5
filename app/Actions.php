@@ -22,7 +22,18 @@ final class Actions
             }
 
             if (!Auth::check()) redirect('login');
-            if ((Auth::user()['role'] ?? '') === 'pelanggan') redirect('portal');
+            if ((Auth::user()['role'] ?? '') === 'pelanggan') {
+                if ($action === 'customer_checkout') {
+                    self::customerCheckout($db, (int)Auth::user()['id_pengguna']);
+                }
+                if ($action === 'customer_upload_payment_proof') {
+                    self::uploadPaymentProof($db, (int)Auth::user()['id_pengguna']);
+                }
+                if ($action === 'customer_cancel_order') {
+                    self::cancelCustomerOrder($db, (int)Auth::user()['id_pengguna']);
+                }
+                redirect('portal');
+            }
             $userId = (int)Auth::user()['id_pengguna'];
 
             switch ($action) {
@@ -39,6 +50,8 @@ final class Actions
                 case 'receive_stock': self::receiveStock($db, $userId); break;
                 case 'checkout': self::checkout($db, $userId); break;
                 case 'update_order_status': self::updateOrderStatus($db, $userId); break;
+                case 'approve_customer_payment': self::reviewCustomerPayment($db, $userId, true); break;
+                case 'reject_customer_payment': self::reviewCustomerPayment($db, $userId, false); break;
                 case 'topup_balance': self::topupBalance($db, $userId); break;
                 case 'save_expense': self::saveExpense($db, $userId); break;
                 case 'delete_expense': self::deleteExpense($db, $userId); break;
@@ -519,6 +532,184 @@ final class Actions
         self::back('receipt','Transaksi berhasil.', 'success', ['id'=>$transactionId]);
     }
 
+    private static function customerCheckout(PDO $db, int $userId): void
+    {
+        $profileStmt = $db->prepare("SELECT id_pelanggan FROM tbl_pelanggan WHERE id_pengguna=? AND status_member='aktif' LIMIT 1");
+        $profileStmt->execute([$userId]);
+        $customerId = (int)$profileStmt->fetchColumn();
+        if ($customerId < 1) self::back('portal', 'Akun ini belum terhubung ke member aktif.', 'danger');
+
+        $cart = json_decode((string)($_POST['cart_json'] ?? '[]'), true);
+        if (!is_array($cart) || !$cart) self::back('portal', 'Keranjang masih kosong.', 'warning');
+        $normalized = [];
+        foreach ($cart as $item) {
+            if (!is_array($item)) continue;
+            $productId = (int)($item['id'] ?? 0);
+            $quantity = (int)($item['qty'] ?? 0);
+            if ($productId > 0 && $quantity > 0) {
+                $normalized[$productId] = ($normalized[$productId] ?? 0) + $quantity;
+            }
+        }
+        if (!$normalized) self::back('portal', 'Isi keranjang tidak valid.', 'warning');
+
+        $qrisDirectory = __DIR__ . '/../uploads/qris';
+        $pointer = $qrisDirectory . '/current.txt';
+        $filename = is_file($pointer) ? trim((string)file_get_contents($pointer)) : '';
+        if (!preg_match('/\Adana-qris\.(?:jpg|png|webp)\z/i', $filename) || !is_file($qrisDirectory . '/' . $filename)) {
+            self::back('portal', 'QRIS toko belum tersedia. Silakan hubungi Admin sebelum membuat pesanan.', 'warning');
+        }
+
+        $db->beginTransaction();
+        $items = [];
+        $subtotal = 0.0;
+        foreach ($normalized as $productId => $quantity) {
+            $productStmt = $db->prepare("SELECT id_produk,sku,nama_produk,harga_jual,harga_beli,stok FROM tbl_produk WHERE id_produk=? AND status_produk='aktif' FOR UPDATE");
+            $productStmt->execute([$productId]);
+            $product = $productStmt->fetch();
+            if (!$product) throw new RuntimeException('Ada produk yang sudah tidak tersedia.');
+            if ((int)$product['stok'] < $quantity) {
+                throw new RuntimeException('Stok ' . $product['nama_produk'] . ' tidak mencukupi.');
+            }
+            $lineTotal = (float)$product['harga_jual'] * $quantity;
+            $subtotal += $lineTotal;
+            $items[] = ['product'=>$product,'quantity'=>$quantity,'total'=>$lineTotal];
+        }
+
+        $code = 'WM-ON-' . date('ymd-His') . '-' . random_int(100,999);
+        $db->prepare("INSERT INTO tbl_transaksi (kode_transaksi,id_pelanggan,id_kasir,jenis_transaksi,status_pesanan,status_pembayaran,metode_pembayaran,metode_penerimaan,tanggal_transaksi,subtotal,diskon,biaya_pengiriman,total_belanja,jumlah_bayar,kembalian,catatan) VALUES (?,?,NULL,'online','menunggu','menunggu','qris_dana','ambil_toko',NOW(),?,0,0,?,0,0,'Menunggu bukti pembayaran QRIS')")
+            ->execute([$code,$customerId,$subtotal,$subtotal]);
+        $transactionId = (int)$db->lastInsertId();
+
+        foreach ($items as $item) {
+            $product = $item['product'];
+            $quantity = $item['quantity'];
+            $before = (int)$product['stok'];
+            $after = $before - $quantity;
+            $db->prepare('INSERT INTO tbl_detail_transaksi (id_transaksi,id_produk,nama_produk,sku_produk,jumlah,harga_satuan,diskon_item,harga_modal,subtotal_item) VALUES (?,?,?,?,?,?,0,?,?)')
+                ->execute([$transactionId,$product['id_produk'],$product['nama_produk'],$product['sku'],$quantity,$product['harga_jual'],$product['harga_beli'],$item['total']]);
+            $db->prepare('UPDATE tbl_produk SET stok=? WHERE id_produk=?')->execute([$after,$product['id_produk']]);
+            $db->prepare("INSERT INTO tbl_mutasi_stok (id_produk,id_pengguna,id_transaksi,jenis_mutasi,jumlah,stok_sebelum,stok_sesudah,keterangan) VALUES (?,NULL,?,'penjualan',?,?,?,'Checkout online pelanggan')")
+                ->execute([$product['id_produk'],$transactionId,-$quantity,$before,$after]);
+        }
+
+        $db->prepare("INSERT INTO tbl_pembayaran (id_transaksi,metode_pembayaran,jumlah_bayar,status_pembayaran) VALUES (?,'qris_dana',?,'menunggu')")
+            ->execute([$transactionId,$subtotal]);
+        $db->commit();
+        log_activity($db,$userId,'checkout_online','tbl_transaksi',$transactionId,'Pesanan pelanggan '.$code);
+        self::back('portal','Pesanan '.$code.' berhasil dibuat. Bayar dengan QRIS toko, lalu unggah bukti pembayaran pada riwayat transaksi.');
+    }
+
+    private static function uploadPaymentProof(PDO $db, int $userId): void
+    {
+        $transactionId = (int)($_POST['id_transaksi'] ?? 0);
+        $file = $_FILES['bukti_pembayaran'] ?? null;
+        if ($transactionId < 1 || !$file || ($file['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) {
+            self::back('portal','Pilih screenshot atau foto bukti pembayaran terlebih dahulu.','warning');
+        }
+        if (($file['error'] ?? UPLOAD_ERR_OK) !== UPLOAD_ERR_OK) {
+            self::back('portal','Bukti pembayaran gagal diunggah. Pilih file lain dan coba kembali.','warning');
+        }
+        if ((int)($file['size'] ?? 0) > 5 * 1024 * 1024 || empty($file['tmp_name']) || !is_uploaded_file($file['tmp_name'])) {
+            self::back('portal','Bukti pembayaran tidak valid atau melebihi batas 5 MB.','warning');
+        }
+        $imageInfo = getimagesize($file['tmp_name']);
+        $mime = (new finfo(FILEINFO_MIME_TYPE))->file($file['tmp_name']);
+        $extensions = ['image/jpeg'=>'jpg','image/png'=>'png','image/webp'=>'webp'];
+        if (!$imageInfo || !isset($extensions[$mime]) || ($imageInfo['mime'] ?? '') !== $mime) {
+            self::back('portal','Bukti pembayaran harus berupa gambar JPG, PNG, atau WebP.','warning');
+        }
+
+        $directory = __DIR__ . '/../uploads/payment-proofs';
+        if (!is_dir($directory) && !mkdir($directory,0755,true) && !is_dir($directory)) {
+            self::back('portal','Folder penyimpanan bukti pembayaran tidak dapat dibuat.','danger');
+        }
+        $filename = bin2hex(random_bytes(16)) . '.' . $extensions[$mime];
+        $path = $directory . '/' . $filename;
+        $relativePath = 'uploads/payment-proofs/' . $filename;
+        $db->beginTransaction();
+        try {
+            $check = $db->prepare("SELECT t.id_transaksi FROM tbl_transaksi t JOIN tbl_pelanggan c ON c.id_pelanggan=t.id_pelanggan JOIN tbl_pembayaran p ON p.id_transaksi=t.id_transaksi WHERE t.id_transaksi=? AND c.id_pengguna=? AND t.jenis_transaksi='online' AND t.metode_pembayaran='qris_dana' AND t.status_pesanan='menunggu' AND t.status_pembayaran='menunggu' AND p.status_pembayaran='menunggu' AND p.bukti_pembayaran IS NULL FOR UPDATE");
+            $check->execute([$transactionId,$userId]);
+            if (!$check->fetchColumn()) {
+                $db->rollBack();
+                self::back('portal','Pesanan tidak ditemukan, sudah dibayar, atau bukti sebelumnya sudah dikirim.','warning');
+            }
+            if (!move_uploaded_file($file['tmp_name'],$path)) {
+                $db->rollBack();
+                self::back('portal','Bukti pembayaran tidak dapat disimpan. Periksa izin folder uploads/payment-proofs.','danger');
+            }
+            $db->prepare('UPDATE tbl_pembayaran SET bukti_pembayaran=? WHERE id_transaksi=?')->execute([$relativePath,$transactionId]);
+            $db->commit();
+        } catch (Throwable $error) {
+            if ($db->inTransaction()) $db->rollBack();
+            if (is_file($path)) unlink($path);
+            throw $error;
+        }
+        log_activity($db,$userId,'unggah_bukti_pembayaran','tbl_pembayaran',$transactionId,'Bukti QRIS diunggah untuk verifikasi');
+        self::back('portal','Bukti pembayaran berhasil dikirim dan sedang menunggu verifikasi Admin/Kasir.');
+    }
+
+    private static function cancelCustomerOrder(PDO $db, int $userId): void
+    {
+        $transactionId = (int)($_POST['id_transaksi'] ?? 0);
+        if ($transactionId < 1) self::back('portal','Pesanan tidak valid.','warning');
+        $db->beginTransaction();
+        $check = $db->prepare("SELECT t.id_transaksi FROM tbl_transaksi t JOIN tbl_pelanggan c ON c.id_pelanggan=t.id_pelanggan JOIN tbl_pembayaran p ON p.id_transaksi=t.id_transaksi WHERE t.id_transaksi=? AND c.id_pengguna=? AND t.jenis_transaksi='online' AND t.status_pesanan='menunggu' AND t.status_pembayaran='menunggu' AND p.status_pembayaran='menunggu' AND p.bukti_pembayaran IS NULL FOR UPDATE");
+        $check->execute([$transactionId,$userId]);
+        if (!$check->fetchColumn()) {
+            $db->rollBack();
+            self::back('portal','Pesanan yang sudah mengirim bukti tidak dapat dibatalkan dari portal. Hubungi Admin/Kasir untuk bantuan.','warning');
+        }
+        self::restoreReservedStock($db,$transactionId,$userId,'Pesanan dibatalkan pelanggan sebelum mengirim bukti QRIS');
+        $db->prepare("UPDATE tbl_transaksi SET status_pesanan='dibatalkan',status_pembayaran='gagal' WHERE id_transaksi=?")->execute([$transactionId]);
+        $db->prepare("UPDATE tbl_pembayaran SET status_pembayaran='gagal',diproses_oleh=?,waktu_pembayaran=NOW() WHERE id_transaksi=?")->execute([$userId,$transactionId]);
+        $db->commit();
+        log_activity($db,$userId,'batalkan_pesanan_online','tbl_transaksi',$transactionId,'Pelanggan membatalkan pesanan sebelum mengirim bukti pembayaran');
+        self::back('portal','Pesanan dibatalkan dan stok sudah dikembalikan.');
+    }
+
+    private static function reviewCustomerPayment(PDO $db, int $userId, bool $approve): void
+    {
+        if (!Auth::canUseOperations()) self::back('dashboard','Akses tidak diizinkan.','danger');
+        $transactionId = (int)($_POST['id_transaksi'] ?? 0);
+        if ($transactionId < 1) self::back('payments','Pesanan tidak valid.','warning');
+        $db->beginTransaction();
+        $check = $db->prepare("SELECT t.id_transaksi,t.total_belanja FROM tbl_transaksi t JOIN tbl_pembayaran p ON p.id_transaksi=t.id_transaksi WHERE t.id_transaksi=? AND t.jenis_transaksi='online' AND t.metode_pembayaran='qris_dana' AND t.status_pesanan='menunggu' AND t.status_pembayaran='menunggu' AND p.status_pembayaran='menunggu' AND p.bukti_pembayaran IS NOT NULL FOR UPDATE");
+        $check->execute([$transactionId]);
+        $transaction = $check->fetch();
+        if (!$transaction) {
+            $db->rollBack();
+            self::back('payments','Pesanan tidak lagi menunggu verifikasi atau bukti tidak ditemukan.','warning');
+        }
+        if ($approve) {
+            $db->prepare("UPDATE tbl_transaksi SET status_pesanan='diproses',status_pembayaran='lunas',jumlah_bayar=total_belanja WHERE id_transaksi=?")->execute([$transactionId]);
+            $db->prepare("UPDATE tbl_pembayaran SET status_pembayaran='berhasil',diproses_oleh=?,waktu_pembayaran=NOW() WHERE id_transaksi=?")->execute([$userId,$transactionId]);
+        } else {
+            self::restoreReservedStock($db,$transactionId,$userId,'Pembayaran QRIS ditolak dan pesanan dibatalkan');
+            $db->prepare("UPDATE tbl_transaksi SET status_pesanan='dibatalkan',status_pembayaran='gagal' WHERE id_transaksi=?")->execute([$transactionId]);
+            $db->prepare("UPDATE tbl_pembayaran SET status_pembayaran='gagal',diproses_oleh=?,waktu_pembayaran=NOW() WHERE id_transaksi=?")->execute([$userId,$transactionId]);
+        }
+        $db->commit();
+        log_activity($db,$userId,$approve?'verifikasi_pembayaran_qris':'tolak_pembayaran_qris','tbl_transaksi',$transactionId,$approve?'Bukti QRIS disetujui':'Bukti QRIS ditolak; pesanan dibatalkan dan stok dikembalikan');
+        self::back('payments',$approve?'Pembayaran disetujui. Pesanan sekarang diproses.':'Bukti ditolak, pesanan dibatalkan, dan stok dikembalikan.');
+    }
+
+    private static function restoreReservedStock(PDO $db, int $transactionId, int $userId, string $reason): void
+    {
+        $details = $db->prepare('SELECT id_produk,jumlah FROM tbl_detail_transaksi WHERE id_transaksi=? ORDER BY id_produk');
+        $details->execute([$transactionId]);
+        foreach ($details->fetchAll() as $detail) {
+            $stockStmt = $db->prepare('SELECT stok FROM tbl_produk WHERE id_produk=? FOR UPDATE');
+            $stockStmt->execute([(int)$detail['id_produk']]);
+            $before = $stockStmt->fetchColumn();
+            if ($before === false) throw new RuntimeException('Produk pesanan tidak ditemukan saat mengembalikan stok.');
+            $after = (int)$before + (int)$detail['jumlah'];
+            $db->prepare('UPDATE tbl_produk SET stok=? WHERE id_produk=?')->execute([$after,(int)$detail['id_produk']]);
+            $db->prepare("INSERT INTO tbl_mutasi_stok (id_produk,id_pengguna,id_transaksi,jenis_mutasi,jumlah,stok_sebelum,stok_sesudah,keterangan) VALUES (?,?,?,'pembatalan',?,?,?,?)")
+                ->execute([(int)$detail['id_produk'],$userId,$transactionId,(int)$detail['jumlah'],(int)$before,$after,$reason]);
+        }
+    }
+
     private static function updateOrderStatus(PDO $db, int $userId): void
     {
         $id = (int)($_POST['id_transaksi'] ?? 0);
@@ -526,9 +717,10 @@ final class Actions
         $allowed = ['menunggu','diproses','siap_diambil','selesai','dibatalkan'];
         if (!in_array($status,$allowed,true)) self::back('reports','Status pesanan tidak valid.','warning');
         if (!Auth::isAdmin() && !in_array($status,['diproses','siap_diambil','selesai'],true)) self::back('reports','Kasir hanya dapat memperbarui proses pesanan.','danger');
-        $current = $db->prepare('SELECT status_pesanan,status_pembayaran FROM tbl_transaksi WHERE id_transaksi=?');
+        $current = $db->prepare('SELECT status_pesanan,status_pembayaran,jenis_transaksi FROM tbl_transaksi WHERE id_transaksi=?');
         $current->execute([$id]); $currentRow = $current->fetch();
         if (!$currentRow) self::back('reports','Transaksi tidak ditemukan.','warning');
+        if ($currentRow['jenis_transaksi'] === 'online' && $currentRow['status_pembayaran'] !== 'lunas') self::back('payments','Pesanan online hanya dapat diproses setelah pembayaran disetujui melalui menu Verifikasi QRIS.','warning');
         if ($status === 'dibatalkan' && $currentRow['status_pembayaran'] === 'lunas') self::back('reports','Transaksi lunas tidak dapat dibatalkan dari menu ini karena perlu proses pengembalian stok dan saldo secara terpisah.','warning');
         $db->prepare('UPDATE tbl_transaksi SET status_pesanan=? WHERE id_transaksi=?')->execute([$status,$id]);
         log_activity($db,$userId,'ubah_status_transaksi','tbl_transaksi',$id,'Status pesanan menjadi '.$status);

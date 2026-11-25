@@ -188,6 +188,7 @@ CREATE TABLE IF NOT EXISTS tbl_pembayaran (
   jumlah_bayar DECIMAL(14,2) NOT NULL,
   status_pembayaran ENUM('menunggu','berhasil','gagal','dikembalikan') NOT NULL DEFAULT 'menunggu',
   referensi_simulasi VARCHAR(80) NULL,
+  bukti_pembayaran VARCHAR(255) NULL,
   diproses_oleh INT UNSIGNED NULL,
   waktu_pembayaran DATETIME NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -330,19 +331,27 @@ VALUES
   ('Administrator WarungMadura', 'admin', 'admin@warungmadura.local', '$2y$12$kr6NHk5sw24.FAQdtj0Dyuyd2s1kFOVtCKAZsZNV1cUEw9soZMOAm', 'admin', 'aktif'),
   ('Kasir WarungMadura', 'kasir', 'kasir@warungmadura.local', '$2y$12$0gthfnBMc3oiShtTQv36N.o/hCmjH5e26nG5AFVpjSg4YLgsa03T6', 'kasir', 'aktif'),
   ('Kasir Dua WarungMadura', 'kasir2', 'kasir2@warungmadura.local', '$2y$10$UUZfLUJPGB1iZpmaGjjz7efH/1g1a0RkWA1i3lTRreniUCVF7yIbq', 'kasir', 'aktif'),
-  ('User Demo WarungMadura', 'userdemo', 'userdemo@warungmadura.local', '$2y$12$l94eWsn80r5NdfMhB1Be..yVlEfuJSek2EeH.3A/mqR4ezWHNbXOa', 'pelanggan', 'aktif');
+  ('Alya Putri', 'userdemo1', 'userdemo1@warungmadura.local', '$2y$10$cJOU38mS2kbVMs92eVeF5.0/xJQv7SNzwmsdtLBlanP1RNCKkMZ3S', 'pelanggan', 'aktif'),
+  ('Bima Pratama', 'userdemo2', 'userdemo2@warungmadura.local', '$2y$10$cJOU38mS2kbVMs92eVeF5.0/xJQv7SNzwmsdtLBlanP1RNCKkMZ3S', 'pelanggan', 'aktif'),
+  ('Nadia Safitri', 'userdemo3', 'userdemo3@warungmadura.local', '$2y$10$cJOU38mS2kbVMs92eVeF5.0/xJQv7SNzwmsdtLBlanP1RNCKkMZ3S', 'pelanggan', 'aktif');
 
--- Akun userdemo otomatis mendapatkan nomor member dan dua saldo virtual.
+-- Akun demo pelanggan mendapatkan nomor member dan dua saldo virtual.
 INSERT IGNORE INTO tbl_pelanggan (id_pengguna,no_member,nama_pelanggan,no_hp,email)
-SELECT id_pengguna,'WM-DEMO-0001','User Demo WarungMadura','081234567890','userdemo@warungmadura.local'
-FROM tbl_pengguna WHERE username='userdemo' AND role='pelanggan';
+SELECT id_pengguna,'WM-DEMO-0001','Alya Putri','081234567801','userdemo1@warungmadura.local'
+FROM tbl_pengguna WHERE username='userdemo1' AND role='pelanggan';
+INSERT IGNORE INTO tbl_pelanggan (id_pengguna,no_member,nama_pelanggan,no_hp,email)
+SELECT id_pengguna,'WM-DEMO-0002','Bima Pratama','081234567802','userdemo2@warungmadura.local'
+FROM tbl_pengguna WHERE username='userdemo2' AND role='pelanggan';
+INSERT IGNORE INTO tbl_pelanggan (id_pengguna,no_member,nama_pelanggan,no_hp,email)
+SELECT id_pengguna,'WM-DEMO-0003','Nadia Safitri','081234567803','userdemo3@warungmadura.local'
+FROM tbl_pengguna WHERE username='userdemo3' AND role='pelanggan';
 
 INSERT IGNORE INTO tbl_saldo_pelanggan (id_pelanggan,jenis_saldo,saldo)
 SELECT p.id_pelanggan,b.jenis_saldo,0
 FROM tbl_pelanggan p
 JOIN tbl_pengguna u ON u.id_pengguna=p.id_pengguna
 JOIN (SELECT 'tabungan' AS jenis_saldo UNION ALL SELECT 'ewallet') b
-WHERE u.username='userdemo';
+WHERE u.username IN ('userdemo1','userdemo2','userdemo3');
 
 INSERT IGNORE INTO tbl_kategori (nama_kategori, deskripsi) VALUES
  ('Sembako', 'Beras, minyak, gula, tepung, dan kebutuhan pokok'),

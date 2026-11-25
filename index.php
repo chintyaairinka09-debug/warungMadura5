@@ -18,6 +18,11 @@ if (Auth::check() && $page === 'login') {
     redirect((Auth::user()['role'] ?? '') === 'pelanggan' ? 'portal' : 'dashboard');
 }
 
+if ($page === 'payment_proof') {
+    require __DIR__ . '/pages/payment_proof.php';
+    exit;
+}
+
 // Akun pelanggan diarahkan ke portal sederhana dan tidak dapat membuka panel admin/kasir.
 if (Auth::check() && (Auth::user()['role'] ?? '') === 'pelanggan') {
     if ($page === 'receipt') {
@@ -30,13 +35,13 @@ if (Auth::check() && (Auth::user()['role'] ?? '') === 'pelanggan') {
 }
 if ($page === 'portal') redirect('dashboard');
 
-$allowedPages = ['dashboard','products','categories','customers','users','stock','transactions','reports','report_export','report_print','suppliers','receipt','login','portal'];
+$allowedPages = ['dashboard','products','categories','customers','users','stock','transactions','payments','reports','report_export','report_print','suppliers','receipt','login','portal'];
 if (!in_array($page, $allowedPages, true)) $page = 'dashboard';
 if (in_array($page, ['categories','users','suppliers'], true) && !Auth::isAdmin()) {
     flash('danger', 'Kamu tidak memiliki izin untuk membuka menu tersebut.');
     redirect('dashboard');
 }
-if (in_array($page, ['stock','transactions'], true) && !Auth::canUseOperations()) redirect('dashboard');
+if (in_array($page, ['stock','transactions','payments'], true) && !Auth::canUseOperations()) redirect('dashboard');
 
 if ($page === 'login') {
     require __DIR__ . '/pages/login.php';

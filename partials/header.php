@@ -1,6 +1,7 @@
 <?php
 $user = Auth::user();
 $current = $page;
+$pageTitle = $current === 'payments' ? 'Verifikasi QRIS' : ucwords(str_replace('_',' ',$current));
 $menus = [
     ['title'=>'MENU UTAMA','items'=>[
         ['dashboard','Dashboard','bi-grid-1x2'],
@@ -11,6 +12,7 @@ $menus = [
     ]],
     ['title'=>'OPERASIONAL','items'=>[
         ['stock','Stok Masuk','bi-box-arrow-in-down'],
+        ['payments','Verifikasi QRIS','bi-qr-code'],
         ['reports','Laporan','bi-graph-up-arrow'],
         ['suppliers','Supplier','bi-truck'],
     ]],
@@ -25,10 +27,10 @@ $flashMessage = take_flash();
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title><?= e(ucwords(str_replace('_',' ',$current))) ?> · <?= e(APP_NAME) ?></title>
+    <title><?= e($pageTitle) ?> · <?= e(APP_NAME) ?></title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB" crossorigin="anonymous">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.13.1/font/bootstrap-icons.min.css">
-    <link rel="stylesheet" href="<?= e(BASE_URL) ?>/assets/css/app.css?v=9">
+    <link rel="stylesheet" href="<?= e(BASE_URL) ?>/assets/css/app.css?v=13">
 </head>
 <body>
 <div class="app-shell">
@@ -43,7 +45,7 @@ $flashMessage = take_flash();
             <nav class="nav flex-column side-nav">
                 <?php foreach ($group['items'] as [$key,$label,$icon]): ?>
                     <?php if (in_array($key,['categories','users','suppliers'],true) && !Auth::isAdmin()) continue; ?>
-                    <?php if ($key === 'transactions' && !Auth::canUseOperations()) continue; ?>
+                    <?php if (in_array($key,['transactions','payments'],true) && !Auth::canUseOperations()) continue; ?>
                     <a class="nav-link <?= $current === $key ? 'active' : '' ?>" href="<?= e(url($key)) ?>">
                         <i class="bi <?= e($icon) ?>"></i><span><?= e($label) ?></span>
                         <?php if ($key === 'products'): ?><i class="bi bi-chevron-right ms-auto nav-chevron"></i><?php endif; ?>
@@ -61,7 +63,7 @@ $flashMessage = take_flash();
         <header class="topbar">
             <div class="d-flex align-items-center gap-3">
                 <button class="btn btn-icon mobile-menu" id="sidebarToggle" type="button" aria-label="Buka menu"><i class="bi bi-list"></i></button>
-                <div><div class="topbar-eyebrow">WARUNGMADURA / ADMINISTRASI</div><div class="topbar-title"><?= e(ucwords(str_replace('_',' ',$current))) ?></div></div>
+                <div><div class="topbar-eyebrow">WARUNGMADURA / ADMINISTRASI</div><div class="topbar-title"><?= e($pageTitle) ?></div></div>
             </div>
             <div class="d-flex align-items-center gap-3">
                 <div class="topbar-date d-none d-md-block"><i class="bi bi-calendar3 me-1"></i><?= e(date('d M Y')) ?></div>

@@ -10,7 +10,8 @@ Website admin untuk sistem minimarket WarungMadura. Dibuat dengan PHP Native OOP
 - Kategori: tambah, edit, aktif/nonaktif (Admin).
 - Pelanggan/member: tambah pelanggan, pencarian, pagination, melihat saldo simulasi, dan top-up simulasi (Admin).
 - Pengguna: kelola akun Admin, Kasir, dan Pelanggan/User; buat akun member otomatis beserta saldo simulasi, ubah role/password, dan aktif/nonaktif (Admin).
-- Portal Pelanggan: login demo, profil member, saldo virtual, dan riwayat transaksi milik akun tersebut.
+- Portal Pelanggan: katalog produk tersedia, keranjang, checkout QRIS ambil-di-toko, unggah bukti pembayaran, status verifikasi, profil member, saldo virtual, dan riwayat transaksi milik akun tersebut.
+- Verifikasi pembayaran online: Admin/Kasir memeriksa bukti QRIS pelanggan sebelum pesanan diproses.
 - Supplier dan stok masuk: catat barang masuk satu atau beberapa produk sekaligus; stok dan riwayat mutasi diperbarui dalam transaksi SQL.
 - Kasir/POS: cari dan filter produk, keranjang, hitung total, pembayaran tunai/Tabungan/E-Wallet simulasi.
 - Laporan: filter tanggal, cari nama pelanggan atau kode transaksi, status pembayaran, pembaruan status pesanan, serta cetak ulang struk.
@@ -39,7 +40,8 @@ Website admin untuk sistem minimarket WarungMadura. Dibuat dengan PHP Native OOP
 4. Jalankan Apache dan MySQL dari XAMPP Control Panel.
 5. Buka `http://localhost/WarungMadura/` (sesuaikan `WarungMadura` dengan nama folder aplikasi).
 6. Jika database lama sudah terpasang, jalankan `database/patch_laporan.sql` sekali melalui phpMyAdmin untuk menambah tabel pengeluaran dan modal barang pada transaksi.
-7. Jika folder `vendor` belum tersedia, pastikan Composer sudah terpasang lalu jalankan `composer install` untuk mengaktifkan ekspor PDF dan Excel.
+7. Jalankan `database/patch_pembayaran_qris_user.sql` untuk menambahkan kolom bukti pembayaran QRIS pada database lama.
+8. Jika folder `vendor` belum tersedia, pastikan Composer sudah terpasang lalu jalankan `composer install` untuk mengaktifkan ekspor PDF dan Excel.
 
 > Jangan import database `db_warungmadura.sql` berulang kali jika sudah berhasil. `CREATE TABLE IF NOT EXISTS` tidak mengosongkan tabel yang ada, tetapi data seed `INSERT IGNORE` tidak memperbarui password lama.
 
@@ -50,9 +52,11 @@ Website admin untuk sistem minimarket WarungMadura. Dibuat dengan PHP Native OOP
 | Admin | `admin` | `AdminWM2026!` |
 | Kasir | `kasir` | `KasirWM2026!` |
 | Kasir 2 | `kasir2` | `Kasir2WM2026!` |
-| Pelanggan / User | `userdemo` | `UserWM2026!` |
+| Alya Putri | `userdemo1` | `UserDemo2026!` |
+| Bima Pratama | `userdemo2` | `UserDemo2026!` |
+| Nadia Safitri | `userdemo3` | `UserDemo2026!` |
 
-Akun demo dibuat untuk pengujian lokal. Admin dapat membuat akun Kasir dan Pelanggan/User melalui menu **Pengguna & Hak Akses**. Untuk akun pelanggan baru, sistem otomatis membuat nomor member serta saldo Tabungan dan E-Wallet virtual. Password disimpan dengan bcrypt menggunakan `password_hash()` dan diverifikasi dengan `password_verify()`. Ganti password demo sebelum aplikasi dipakai sungguhan.
+Akun demo dibuat untuk pengujian lokal. Ketiga akun pelanggan memakai password bersama `UserDemo2026!`. Admin dapat membuat akun Kasir dan Pelanggan/User melalui menu **Pengguna & Hak Akses**. Untuk akun pelanggan baru, sistem otomatis membuat nomor member serta saldo Tabungan dan E-Wallet virtual. Password disimpan dengan bcrypt menggunakan `password_hash()` dan diverifikasi dengan `password_verify()`. Ganti password demo sebelum aplikasi dipakai sungguhan.
 
 ## 4. Hak akses
 
@@ -66,7 +70,7 @@ Boleh melihat katalog dan stok, menambahkan pelanggan, mencatat stok masuk, menj
 
 ### Pelanggan / User
 
-Login diarahkan ke portal pelanggan, bukan dashboard Admin. Pelanggan hanya dapat melihat profil member, nomor member, saldo simulasi, dan riwayat transaksi yang terhubung dengan akunnya. Akses ke halaman operasional/Admin diblokir. Fitur katalog/keranjang dan checkout online belum termasuk dalam website admin ini.
+Login diarahkan ke portal pelanggan, bukan dashboard Admin. Pelanggan dapat melihat katalog, membuat pesanan ambil-di-toko, membayar melalui QRIS yang ditampilkan, dan mengunggah bukti pembayaran untuk diperiksa Admin/Kasir. Pesanan belum dianggap lunas atau diproses sebelum bukti disetujui. Pelanggan hanya dapat melihat transaksi dan bukti milik akunnya; akses ke halaman operasional/Admin diblokir.
 
 Produk tidak dihapus permanen. Admin menonaktifkan produk agar data transaksi lama tetap tersimpan. Perubahan stok dilakukan lewat penerimaan barang/POS supaya mutasi stok tercatat.
 
@@ -98,11 +102,12 @@ Buka Laporan Penjualan, klik **Cetak** pada transaksi. Jendela nota menyediakan 
 
 ## 8. Catatan penting
 
-- Tabungan dan E-Wallet hanya saldo virtual. QRIS DANA di POS menggunakan gambar QRIS Merchant yang diunggah Admin; kasir harus memeriksa pembayaran di aplikasi DANA Bisnis dan mengonfirmasi secara manual. Integrasi status pembayaran otomatis belum tersedia.
+- Tabungan dan E-Wallet hanya saldo virtual. QRIS DANA di POS menggunakan gambar QRIS Merchant yang diunggah Admin; kasir harus memeriksa pembayaran di aplikasi DANA Bisnis dan mengonfirmasi secara manual. Di portal pelanggan, bukti transfer QRIS diperiksa Admin/Kasir melalui menu **Verifikasi QRIS**. Pesanan baru menjadi lunas setelah disetujui. Stok ditahan saat checkout dan dikembalikan bila pesanan dibatalkan atau bukti ditolak.
+- Screenshot bukti pembayaran dibatasi ke JPG, PNG, atau WebP maksimal 5 MB dan disimpan pada folder yang tidak dapat diakses langsung. Bukti hanya dapat dilihat oleh pemilik transaksi serta Admin/Kasir yang berwenang.
 - Menu POS membuat transaksi toko dengan status lunas setelah validasi stok dan pembayaran. Pengurangan stok, detail transaksi, mutasi stok, dan mutasi saldo diproses dalam transaksi database agar konsisten.
 - Pembatalan transaksi lunas tidak disediakan dari form status sederhana karena harus disertai proses refund dan pengembalian stok yang terpisah.
-- Aplikasi ini adalah **website admin + kasir dengan portal akun pelanggan dasar**. Portal user belum menyediakan katalog belanja, keranjang, dan checkout online. Database sudah mempunyai tabel keranjang dan transaksi online sebagai fondasi pengembangan selanjutnya.
-- Belum diuji langsung pada MariaDB XAMPP milik pengguna. File PHP dan JavaScript sudah diperiksa sintaksnya, tetapi alur database harus diuji setelah diinstal.
+- Aplikasi ini adalah **website admin + kasir dengan portal belanja pelanggan**. Pembayaran QRIS tetap diverifikasi manual; tidak ada integrasi gateway pembayaran otomatis.
+- Alur checkout, unggah bukti, persetujuan Admin, pembatalan, serta pemulihan stok QRIS sudah diuji pada XAMPP lokal menggunakan data uji sementara yang dibersihkan setelah pengujian. Pembayaran QRIS sungguhan tetap harus diperiksa manual di aplikasi merchant.
 
 ## Struktur folder
 
