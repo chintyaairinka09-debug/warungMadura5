@@ -30,7 +30,7 @@ if (Auth::check() && (Auth::user()['role'] ?? '') === 'pelanggan') {
 }
 if ($page === 'portal') redirect('dashboard');
 
-$allowedPages = ['dashboard','products','categories','customers','users','stock','transactions','reports','suppliers','receipt','login','portal'];
+$allowedPages = ['dashboard','products','categories','customers','users','stock','transactions','reports','report_export','report_print','suppliers','receipt','login','portal'];
 if (!in_array($page, $allowedPages, true)) $page = 'dashboard';
 if (in_array($page, ['categories','users','suppliers'], true) && !Auth::isAdmin()) {
     flash('danger', 'Kamu tidak memiliki izin untuk membuka menu tersebut.');
@@ -40,6 +40,15 @@ if (in_array($page, ['stock','transactions'], true) && !Auth::canUseOperations()
 
 if ($page === 'login') {
     require __DIR__ . '/pages/login.php';
+    exit;
+}
+if ($page === 'report_export') {
+    require __DIR__ . '/pages/report_export.php';
+    exit;
+}
+if ($page === 'report_print') {
+    $_GET['format'] = 'print';
+    require __DIR__ . '/pages/report_export.php';
     exit;
 }
 if ($page === 'receipt') {

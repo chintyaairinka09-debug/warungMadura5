@@ -40,6 +40,8 @@ final class Actions
                 case 'checkout': self::checkout($db, $userId); break;
                 case 'update_order_status': self::updateOrderStatus($db, $userId); break;
                 case 'topup_balance': self::topupBalance($db, $userId); break;
+                case 'save_expense': self::saveExpense($db, $userId); break;
+                case 'delete_expense': self::deleteExpense($db, $userId); break;
                 default:
                     flash('warning', 'Aksi tidak dikenali.');
                     redirect('dashboard');
@@ -69,7 +71,7 @@ final class Actions
     private static function saveProduct(PDO $db, int $userId): void
     {
         $id = (int)($_POST['id_produk'] ?? 0);
-        if ($id > 0) self::adminOnly();
+        if ($id > 0 || !Auth::isAdmin()) self::adminOnly();
         $sku = trim((string)($_POST['sku'] ?? ''));
         $name = trim((string)($_POST['nama_produk'] ?? ''));
         $category = (int)($_POST['id_kategori'] ?? 0);
@@ -191,7 +193,7 @@ final class Actions
 
     private static function importProducts(PDO $db, int $userId): void
     {
-        if (!Auth::canUseOperations()) self::adminOnly();
+        self::adminOnly();
         if (empty($_FILES['csv_file']['tmp_name']) || !is_uploaded_file($_FILES['csv_file']['tmp_name'])) {
             self::back('products', 'Pilih file CSV terlebih dahulu.', 'warning');
         }
@@ -497,8 +499,8 @@ final class Actions
         $transactionId = (int)$db->lastInsertId();
         foreach ($items as $item) {
             $p = $item['product']; $qty = $item['qty']; $line = $item['line'];
-            $db->prepare('INSERT INTO tbl_detail_transaksi (id_transaksi,id_produk,nama_produk,sku_produk,jumlah,harga_satuan,diskon_item,subtotal_item) VALUES (?,?,?,?,?,?,0,?)')
-                ->execute([$transactionId,$p['id_produk'],$p['nama_produk'],$p['sku'],$qty,$p['harga_jual'],$line]);
+            $db->prepare('INSERT INTO tbl_detail_transaksi (id_transaksi,id_produk,nama_produk,sku_produk,jumlah,harga_satuan,diskon_item,harga_modal,subtotal_item) VALUES (?,?,?,?,?,?,0,?,?)')
+                ->execute([$transactionId,$p['id_produk'],$p['nama_produk'],$p['sku'],$qty,$p['harga_jual'],(float)$p['harga_beli'],$line]);
             $before = (int)$p['stok']; $after = $before - $qty;
             $db->prepare('UPDATE tbl_produk SET stok=? WHERE id_produk=?')->execute([$after,$p['id_produk']]);
             $db->prepare("INSERT INTO tbl_mutasi_stok (id_produk,id_pengguna,id_transaksi,jenis_mutasi,jumlah,stok_sebelum,stok_sesudah,keterangan) VALUES (?,?,?,'penjualan',?,?,?,'Penjualan kasir')")
@@ -531,6 +533,55 @@ final class Actions
         $db->prepare('UPDATE tbl_transaksi SET status_pesanan=? WHERE id_transaksi=?')->execute([$status,$id]);
         log_activity($db,$userId,'ubah_status_transaksi','tbl_transaksi',$id,'Status pesanan menjadi '.$status);
         self::back('reports','Status pesanan diperbarui.');
+    }
+
+    private static function saveExpense(PDO $db, int $userId): void
+    {
+        $id = (int)($_POST['id_pengeluaran'] ?? 0);
+        $category = (string)($_POST['kategori_pengeluaran'] ?? 'lainnya');
+        $description = trim((string)($_POST['deskripsi'] ?? ''));
+        $amount = (float)($_POST['jumlah'] ?? 0);
+        $date = trim((string)($_POST['tanggal_pengeluaran'] ?? ''));
+        $allowedCategories = ['listrik','transportasi','perlengkapan','gaji','sewa','lainnya'];
+        if (!in_array($category, $allowedCategories, true) || $description === '' || $amount <= 0 || $date === '') {
+            self::back('reports', 'Kategori, deskripsi, tanggal, dan nominal pengeluaran wajib diisi.', 'warning');
+        }
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/', $date) && !preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}(:\d{2})?$/', $date)) {
+            self::back('reports', 'Tanggal pengeluaran tidak valid.', 'warning');
+        }
+        $date = str_replace('T', ' ', $date);
+        if (strlen($date) === 16) $date .= ':00';
+        if ($id > 0) {
+            $ownershipSql = Auth::isAdmin() ? '' : ' AND id_pengguna=?';
+            $ownershipParams = Auth::isAdmin() ? [] : [$userId];
+            $check = $db->prepare('SELECT id_pengeluaran FROM tbl_pengeluaran WHERE id_pengeluaran=?' . $ownershipSql);
+            $check->execute(array_merge([$id], $ownershipParams));
+            if (!$check->fetchColumn()) self::back('reports', 'Kamu hanya dapat mengubah pengeluaran yang kamu catat.', 'danger');
+            $db->prepare('UPDATE tbl_pengeluaran SET kategori_pengeluaran=?,deskripsi=?,jumlah=?,tanggal_pengeluaran=? WHERE id_pengeluaran=?' . $ownershipSql)
+                ->execute(array_merge([$category, $description, $amount, $date, $id], $ownershipParams));
+            $savedId = $id;
+            log_activity($db, $userId, 'edit_pengeluaran', 'tbl_pengeluaran', $savedId, 'Mengubah pengeluaran '.$description);
+        } else {
+            $number = 'EXP-' . date('Ymd-His') . '-' . random_int(100, 999);
+            $db->prepare('INSERT INTO tbl_pengeluaran (no_pengeluaran,kategori_pengeluaran,deskripsi,jumlah,tanggal_pengeluaran,id_pengguna) VALUES (?,?,?,?,?,?)')
+                ->execute([$number, $category, $description, $amount, $date, $userId]);
+            $savedId = (int)$db->lastInsertId();
+            log_activity($db, $userId, 'tambah_pengeluaran', 'tbl_pengeluaran', $savedId, 'Menambah pengeluaran '.$description);
+        }
+        self::back('reports', 'Pengeluaran berhasil disimpan.');
+    }
+
+    private static function deleteExpense(PDO $db, int $userId): void
+    {
+        $id = (int)($_POST['id_pengeluaran'] ?? 0);
+        if ($id < 1) self::back('reports', 'Pengeluaran tidak valid.', 'warning');
+        $ownershipSql = Auth::isAdmin() ? '' : ' AND id_pengguna=?';
+        $ownershipParams = Auth::isAdmin() ? [] : [$userId];
+        $delete = $db->prepare('DELETE FROM tbl_pengeluaran WHERE id_pengeluaran=?' . $ownershipSql);
+        $delete->execute(array_merge([$id], $ownershipParams));
+        if ($delete->rowCount() === 0) self::back('reports', 'Kamu hanya dapat menghapus pengeluaran yang kamu catat.', 'danger');
+        log_activity($db, $userId, 'hapus_pengeluaran', 'tbl_pengeluaran', $id, 'Menghapus pengeluaran operasional');
+        self::back('reports', 'Pengeluaran berhasil dihapus.');
     }
 
     private static function topupBalance(PDO $db, int $userId): void

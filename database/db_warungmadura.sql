@@ -171,6 +171,7 @@ CREATE TABLE IF NOT EXISTS tbl_detail_transaksi (
   jumlah INT UNSIGNED NOT NULL,
   harga_satuan DECIMAL(14,2) NOT NULL,
   diskon_item DECIMAL(14,2) NOT NULL DEFAULT 0.00,
+  harga_modal DECIMAL(14,2) NOT NULL DEFAULT 0.00,
   subtotal_item DECIMAL(14,2) NOT NULL,
   CONSTRAINT fk_detail_transaksi_header FOREIGN KEY (id_transaksi)
     REFERENCES tbl_transaksi(id_transaksi) ON UPDATE CASCADE ON DELETE RESTRICT,
@@ -287,6 +288,22 @@ CREATE TABLE IF NOT EXISTS tbl_mutasi_stok (
 ) ENGINE=InnoDB;
 
 -- 12. LOG AKTIVITAS PENGGUNA
+CREATE TABLE IF NOT EXISTS tbl_pengeluaran (
+  id_pengeluaran BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  no_pengeluaran VARCHAR(50) NOT NULL UNIQUE,
+  kategori_pengeluaran ENUM('listrik','transportasi','perlengkapan','gaji','sewa','lainnya') NOT NULL DEFAULT 'lainnya',
+  deskripsi VARCHAR(255) NOT NULL,
+  jumlah DECIMAL(14,2) NOT NULL,
+  tanggal_pengeluaran DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  id_pengguna INT UNSIGNED NULL,
+  bukti VARCHAR(255) NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_pengeluaran_pengguna FOREIGN KEY (id_pengguna)
+    REFERENCES tbl_pengguna(id_pengguna) ON UPDATE CASCADE ON DELETE SET NULL,
+  INDEX idx_pengeluaran_tanggal (tanggal_pengeluaran),
+  INDEX idx_pengeluaran_kategori (kategori_pengeluaran)
+) ENGINE=InnoDB;
+
 CREATE TABLE IF NOT EXISTS tbl_log_aktivitas (
   id_log BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   id_pengguna INT UNSIGNED NULL,
@@ -312,6 +329,7 @@ INSERT IGNORE INTO tbl_pengguna
 VALUES
   ('Administrator WarungMadura', 'admin', 'admin@warungmadura.local', '$2y$12$kr6NHk5sw24.FAQdtj0Dyuyd2s1kFOVtCKAZsZNV1cUEw9soZMOAm', 'admin', 'aktif'),
   ('Kasir WarungMadura', 'kasir', 'kasir@warungmadura.local', '$2y$12$0gthfnBMc3oiShtTQv36N.o/hCmjH5e26nG5AFVpjSg4YLgsa03T6', 'kasir', 'aktif'),
+  ('Kasir Dua WarungMadura', 'kasir2', 'kasir2@warungmadura.local', '$2y$10$UUZfLUJPGB1iZpmaGjjz7efH/1g1a0RkWA1i3lTRreniUCVF7yIbq', 'kasir', 'aktif'),
   ('User Demo WarungMadura', 'userdemo', 'userdemo@warungmadura.local', '$2y$12$l94eWsn80r5NdfMhB1Be..yVlEfuJSek2EeH.3A/mqR4ezWHNbXOa', 'pelanggan', 'aktif');
 
 -- Akun userdemo otomatis mendapatkan nomor member dan dua saldo virtual.

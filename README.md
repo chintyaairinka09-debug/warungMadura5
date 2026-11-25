@@ -38,6 +38,8 @@ Website admin untuk sistem minimarket WarungMadura. Dibuat dengan PHP Native OOP
    - `BASE_URL` — ditentukan otomatis dari lokasi `index.php`; tidak perlu diubah saat nama folder berbeda.
 4. Jalankan Apache dan MySQL dari XAMPP Control Panel.
 5. Buka `http://localhost/WarungMadura/` (sesuaikan `WarungMadura` dengan nama folder aplikasi).
+6. Jika database lama sudah terpasang, jalankan `database/patch_laporan.sql` sekali melalui phpMyAdmin untuk menambah tabel pengeluaran dan modal barang pada transaksi.
+7. Jika folder `vendor` belum tersedia, pastikan Composer sudah terpasang lalu jalankan `composer install` untuk mengaktifkan ekspor PDF dan Excel.
 
 > Jangan import database `db_warungmadura.sql` berulang kali jika sudah berhasil. `CREATE TABLE IF NOT EXISTS` tidak mengosongkan tabel yang ada, tetapi data seed `INSERT IGNORE` tidak memperbarui password lama.
 
@@ -47,6 +49,7 @@ Website admin untuk sistem minimarket WarungMadura. Dibuat dengan PHP Native OOP
 |---|---|---|
 | Admin | `admin` | `AdminWM2026!` |
 | Kasir | `kasir` | `KasirWM2026!` |
+| Kasir 2 | `kasir2` | `Kasir2WM2026!` |
 | Pelanggan / User | `userdemo` | `UserWM2026!` |
 
 Akun demo dibuat untuk pengujian lokal. Admin dapat membuat akun Kasir dan Pelanggan/User melalui menu **Pengguna & Hak Akses**. Untuk akun pelanggan baru, sistem otomatis membuat nomor member serta saldo Tabungan dan E-Wallet virtual. Password disimpan dengan bcrypt menggunakan `password_hash()` dan diverifikasi dengan `password_verify()`. Ganti password demo sebelum aplikasi dipakai sungguhan.
@@ -59,7 +62,7 @@ Akses penuh: dashboard, tambah/edit/nonaktif produk, import produk, kategori, pe
 
 ### Kasir
 
-Boleh melihat katalog, menambahkan produk baru, import CSV, menambahkan pelanggan, mencatat stok masuk, menjalankan transaksi POS, melihat laporan, dan mencetak nota. Kasir **tidak bisa mengedit atau menonaktifkan produk**, mengelola pengguna, mengubah kategori, mengelola supplier, atau melakukan top-up saldo.
+Boleh melihat katalog dan stok, menambahkan pelanggan, mencatat stok masuk, menjalankan transaksi POS, melihat laporan, memperbarui status proses pesanan, dan mencetak nota. Kasir **tidak bisa menambah, mengedit, mengimport, atau menonaktifkan produk**, mengelola pengguna, mengubah kategori, mengelola supplier, atau melakukan top-up saldo.
 
 ### Pelanggan / User
 
@@ -67,7 +70,21 @@ Login diarahkan ke portal pelanggan, bukan dashboard Admin. Pelanggan hanya dapa
 
 Produk tidak dihapus permanen. Admin menonaktifkan produk agar data transaksi lama tetap tersimpan. Perubahan stok dilakukan lewat penerimaan barang/POS supaya mutasi stok tercatat.
 
-## 5. Import produk massal
+## 5. Laporan dan rekap
+
+Menu **Laporan** menampilkan enam kartu laporan:
+
+- Penjualan: jumlah transaksi, total penjualan, dan barang terlaris.
+- Pembelian barang: penerimaan stok beserta supplier dan total biaya.
+- Pengeluaran: pencatatan listrik, transportasi, perlengkapan, gaji, sewa, dan lainnya.
+- Arus kas: penjualan sebagai pemasukan serta pembelian/pengeluaran sebagai uang keluar.
+- Stok: sisa stok dan daftar barang yang perlu dibeli.
+- Laba rugi: penjualan dikurangi harga modal barang terjual dan pengeluaran operasional.
+
+Setiap laporan dapat difilter berdasarkan tanggal, dibuka dalam halaman pratinjau cetak khusus, dan diunduh sebagai PDF atau Excel tanpa memakai dialog Windows Print. Kasir dapat menambah serta mengedit pengeluaran.
+Laporan penjualan, pembelian, pengeluaran, arus kas, dan laba rugi dibatasi ke aktivitas kasir yang sedang login; Admin dapat memilih satu kasir atau melihat gabungan. Laporan stok menunjukkan stok toko yang dipakai bersama, bukan stok terpisah per kasir.
+
+## 6. Import produk massal
 
 1. Buka menu Produk → Import CSV.
 2. Unduh `import/template_produk.csv`.
@@ -75,11 +92,11 @@ Produk tidak dihapus permanen. Admin menonaktifkan produk agar data transaksi la
 4. Nama kategori harus sama persis dengan data kategori di database. Kolom `nama_merk` dari template lama bersifat opsional dan diabaikan.
 5. Upload CSV. SKU yang sudah ada dilewati, bukan ditimpa.
 
-## 6. Cetak struk 77 × 297 mm
+## 7. Cetak struk 77 × 297 mm
 
 Buka Laporan Penjualan, klik **Cetak** pada transaksi. Jendela nota menyediakan tombol cetak dan mengatur ukuran halaman 77 × 297 mm. Di dialog print, pilih printer EPSON, orientasi Portrait, dan matikan header/footer browser bila opsi tersebut tersedia. Pastikan ukuran kertas 77 × 297 mm atau ukuran kustom yang sama sudah tersedia di driver printer.
 
-## 7. Catatan penting
+## 8. Catatan penting
 
 - Tabungan dan E-Wallet hanya saldo virtual. QRIS DANA di POS menggunakan gambar QRIS Merchant yang diunggah Admin; kasir harus memeriksa pembayaran di aplikasi DANA Bisnis dan mengonfirmasi secara manual. Integrasi status pembayaran otomatis belum tersedia.
 - Menu POS membuat transaksi toko dengan status lunas setelah validasi stok dan pembayaran. Pengurangan stok, detail transaksi, mutasi stok, dan mutasi saldo diproses dalam transaksi database agar konsisten.
