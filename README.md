@@ -10,8 +10,8 @@ Website admin untuk sistem minimarket WarungMadura. Dibuat dengan PHP Native OOP
 - Kategori: tambah, edit, aktif/nonaktif (Admin).
 - Pelanggan/member: tambah pelanggan, pencarian, pagination, melihat saldo simulasi, dan top-up simulasi (Admin).
 - Pengguna: kelola akun Admin, Kasir, dan Pelanggan/User; buat akun member otomatis beserta saldo simulasi, ubah role/password, dan aktif/nonaktif (Admin).
-- Portal Pelanggan: katalog produk tersedia, keranjang, checkout QRIS ambil-di-toko, unggah bukti pembayaran, status verifikasi, profil member, saldo virtual, dan riwayat transaksi milik akun tersebut.
-- Verifikasi pembayaran online: Admin/Kasir memeriksa bukti QRIS pelanggan sebelum pesanan diproses.
+- Portal Pelanggan: katalog produk, keranjang, checkout Duitku sandbox ambil-di-toko, status pembayaran otomatis, profil member, saldo virtual, dan riwayat transaksi milik akun tersebut.
+- Pembayaran Duitku: invoice dibuat di server, pelanggan memilih metode pembayaran di halaman Duitku, dan callback bertanda tangan memproses pesanan otomatis.
 - Supplier dan stok masuk: catat barang masuk satu atau beberapa produk sekaligus; stok dan riwayat mutasi diperbarui dalam transaksi SQL.
 - Kasir/POS: cari dan filter produk, keranjang, hitung total, pembayaran tunai/Tabungan/E-Wallet simulasi.
 - Laporan: filter tanggal, cari nama pelanggan atau kode transaksi, status pembayaran, pembaruan status pesanan, serta cetak ulang struk.
@@ -42,6 +42,8 @@ Website admin untuk sistem minimarket WarungMadura. Dibuat dengan PHP Native OOP
 6. Jika database lama sudah terpasang, jalankan `database/patch_laporan.sql` sekali melalui phpMyAdmin untuk menambah tabel pengeluaran dan modal barang pada transaksi.
 7. Jalankan `database/patch_pembayaran_qris_user.sql` untuk menambahkan kolom bukti pembayaran QRIS pada database lama.
 8. Jika folder `vendor` belum tersedia, pastikan Composer sudah terpasang lalu jalankan `composer install` untuk mengaktifkan ekspor PDF dan Excel.
+9. Untuk database lama, jalankan `database/patch_duitku.sql` melalui phpMyAdmin. Jalankan ulang jika patch sebelumnya sudah pernah diterapkan; patch ini menambahkan URL invoice dan nomor Virtual Account untuk portal serta panel Admin/Kasir.
+10. Kredensial sandbox tersimpan di `config/duitku.local.php` dan dikecualikan dari Git. Callback Duitku harus dapat diakses dari internet; untuk pengujian lokal gunakan alamat publik HTTPS/tunnel dan daftarkan URL callback tersebut pada dashboard Duitku. Setelah siap produksi, ganti `DUITKU_SANDBOX` menjadi `false` dan gunakan kredensial live.
 
 > Jangan import database `db_warungmadura.sql` berulang kali jika sudah berhasil. `CREATE TABLE IF NOT EXISTS` tidak mengosongkan tabel yang ada, tetapi data seed `INSERT IGNORE` tidak memperbarui password lama.
 
@@ -70,7 +72,7 @@ Boleh melihat katalog dan stok, menambahkan pelanggan, mencatat stok masuk, menj
 
 ### Pelanggan / User
 
-Login diarahkan ke portal pelanggan, bukan dashboard Admin. Pelanggan dapat melihat katalog, membuat pesanan ambil-di-toko, membayar melalui QRIS yang ditampilkan, dan mengunggah bukti pembayaran untuk diperiksa Admin/Kasir. Pesanan belum dianggap lunas atau diproses sebelum bukti disetujui. Pelanggan hanya dapat melihat transaksi dan bukti milik akunnya; akses ke halaman operasional/Admin diblokir.
+Login diarahkan ke portal pelanggan, bukan dashboard Admin. Pelanggan dapat melihat katalog, membuat pesanan ambil-di-toko, lalu memilih metode pembayaran di halaman Duitku. Status lunas dan pemrosesan hanya ditetapkan setelah callback Duitku lolos validasi tanda tangan. Pelanggan hanya dapat melihat transaksi milik akunnya; akses ke halaman operasional/Admin diblokir.
 
 Produk tidak dihapus permanen. Admin menonaktifkan produk agar data transaksi lama tetap tersimpan. Perubahan stok dilakukan lewat penerimaan barang/POS supaya mutasi stok tercatat.
 
@@ -106,8 +108,8 @@ Buka Laporan Penjualan, klik **Cetak** pada transaksi. Jendela nota menyediakan 
 - Screenshot bukti pembayaran dibatasi ke JPG, PNG, atau WebP maksimal 5 MB dan disimpan pada folder yang tidak dapat diakses langsung. Bukti hanya dapat dilihat oleh pemilik transaksi serta Admin/Kasir yang berwenang.
 - Menu POS membuat transaksi toko dengan status lunas setelah validasi stok dan pembayaran. Pengurangan stok, detail transaksi, mutasi stok, dan mutasi saldo diproses dalam transaksi database agar konsisten.
 - Pembatalan transaksi lunas tidak disediakan dari form status sederhana karena harus disertai proses refund dan pengembalian stok yang terpisah.
-- Aplikasi ini adalah **website admin + kasir dengan portal belanja pelanggan**. Pembayaran QRIS tetap diverifikasi manual; tidak ada integrasi gateway pembayaran otomatis.
-- Alur checkout, unggah bukti, persetujuan Admin, pembatalan, serta pemulihan stok QRIS sudah diuji pada XAMPP lokal menggunakan data uji sementara yang dibersihkan setelah pengujian. Pembayaran QRIS sungguhan tetap harus diperiksa manual di aplikasi merchant.
+- QRIS DANA di POS tetap diverifikasi manual oleh kasir. Portal pelanggan memakai Duitku; callback perlu URL publik yang bisa dijangkau server Duitku dan ditandai sebagai lunas hanya setelah signature dan nominal tervalidasi.
+- Link demo sukses yang disediakan Duitku adalah untuk pengujian sandbox. Aplikasi memakai `returnUrl` portal sendiri agar pelanggan kembali ke riwayat transaksi; redirect browser tidak dijadikan bukti pembayaran.
 
 ## Struktur folder
 
