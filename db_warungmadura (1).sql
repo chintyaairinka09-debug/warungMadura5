@@ -271,10 +271,13 @@ CREATE TABLE `tbl_pelanggan` (
 CREATE TABLE `tbl_pembayaran` (
   `id_pembayaran` bigint(20) UNSIGNED NOT NULL,
   `id_transaksi` bigint(20) UNSIGNED NOT NULL,
-  `metode_pembayaran` enum('tunai','tabungan','ewallet','qris_dana') NOT NULL,
+  `metode_pembayaran` enum('tunai','tabungan','ewallet','qris_dana','duitku') NOT NULL,
+  `kode_metode_gateway` varchar(10) DEFAULT NULL,
   `jumlah_bayar` decimal(14,2) NOT NULL,
   `status_pembayaran` enum('menunggu','berhasil','gagal','dikembalikan') NOT NULL DEFAULT 'menunggu',
   `referensi_simulasi` varchar(80) DEFAULT NULL,
+  `url_pembayaran` varchar(500) DEFAULT NULL,
+  `va_number` varchar(80) DEFAULT NULL,
   `diproses_oleh` int(10) UNSIGNED DEFAULT NULL,
   `waktu_pembayaran` datetime DEFAULT NULL,
   `created_at` datetime NOT NULL DEFAULT current_timestamp()
@@ -428,7 +431,7 @@ CREATE TABLE `tbl_transaksi` (
   `jenis_transaksi` enum('online','toko') NOT NULL DEFAULT 'toko',
   `status_pesanan` enum('menunggu','diproses','siap_diambil','selesai','dibatalkan') NOT NULL DEFAULT 'menunggu',
   `status_pembayaran` enum('belum_bayar','menunggu','lunas','gagal','dikembalikan') NOT NULL DEFAULT 'belum_bayar',
-  `metode_pembayaran` enum('tunai','tabungan','ewallet','qris_dana') DEFAULT NULL,
+  `metode_pembayaran` enum('tunai','tabungan','ewallet','qris_dana','duitku') DEFAULT NULL,
   `metode_penerimaan` enum('ambil_toko','diantar') NOT NULL DEFAULT 'ambil_toko',
   `tanggal_transaksi` datetime NOT NULL DEFAULT current_timestamp(),
   `subtotal` decimal(14,2) NOT NULL DEFAULT 0.00,

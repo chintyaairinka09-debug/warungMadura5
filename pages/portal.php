@@ -7,17 +7,30 @@ $balances = ['tabungan'=>0.0, 'ewallet'=>0.0];
 $transactions = [];
 $flashMessage = take_flash();
 $products = $db->query("SELECT id_produk,nama_produk,sku,stok,satuan,harga_jual,gambar FROM tbl_produk WHERE status_produk='aktif' AND stok>0 ORDER BY nama_produk")->fetchAll();
-$qrisPointer = __DIR__ . '/../uploads/qris/current.txt';
-$qrisFilename = is_file($qrisPointer) ? trim((string)file_get_contents($qrisPointer)) : '';
-$qrisDirectory = __DIR__ . '/../uploads/qris';
-$qrisImage = preg_match('/\Adana-qris\.(?:jpg|png|webp)\z/i',$qrisFilename) && is_file($qrisDirectory . '/' . $qrisFilename)
-    ? BASE_URL . '/uploads/qris/' . $qrisFilename
-    : null;
+if (isset($_GET['payment_return'])) {
+    $returnedOrder = preg_replace('/[^A-Za-z0-9-]/', '', (string)($_GET['merchantOrderId'] ?? ''));
+    if ($returnedOrder !== '') {
+        try {
+            $returnedStatus = Duitku::checkTransactionStatus($db,$returnedOrder,(int)$loggedUser['id_pengguna']);
+            $flashMessage = $returnedStatus === 'lunas'
+                ? ['type'=>'success','message'=>'Pembayaran terkonfirmasi. Pesananmu sedang diproses.']
+                : ($returnedStatus === 'gagal'
+                    ? ['type'=>'danger','message'=>'Duitku menyatakan pembayaran gagal atau kedaluwarsa. Silakan buat pesanan baru.']
+                    : ['type'=>'info','message'=>'Duitku masih mencatat pembayaran ini sebagai menunggu. Status akan diperbarui lagi setelah konfirmasi diterima.']);
+        } catch (Throwable $error) {
+            error_log('[Duitku return status] ' . $error->getMessage());
+            $flashMessage = ['type'=>'warning','message'=>'Kami belum dapat mengambil status terbaru dari Duitku. Pesanan tetap menunggu konfirmasi; coba muat ulang sebentar lagi.'];
+        }
+    } else {
+        $flashMessage = ['type'=>'info','message'=>'Kamu kembali dari Duitku. Periksa status pembayaran pada riwayat transaksi.'];
+    }
+}
+$duitkuReady = defined('DUITKU_API_KEY') && defined('DUITKU_MERCHANT_CODE') && DUITKU_API_KEY !== '';
 if ($profile) {
     $balanceStmt = $db->prepare('SELECT jenis_saldo,saldo FROM tbl_saldo_pelanggan WHERE id_pelanggan=?');
     $balanceStmt->execute([(int)$profile['id_pelanggan']]);
     foreach ($balanceStmt->fetchAll() as $balance) $balances[$balance['jenis_saldo']] = (float)$balance['saldo'];
-    $trxStmt = $db->prepare('SELECT t.id_transaksi,t.kode_transaksi,t.tanggal_transaksi,t.total_belanja,t.status_pembayaran,t.status_pesanan,t.metode_pembayaran,p.bukti_pembayaran FROM tbl_transaksi t LEFT JOIN tbl_pembayaran p ON p.id_transaksi=t.id_transaksi WHERE t.id_pelanggan=? ORDER BY t.id_transaksi DESC LIMIT 8');
+    $trxStmt = $db->prepare('SELECT t.id_transaksi,t.kode_transaksi,t.tanggal_transaksi,t.total_belanja,t.status_pembayaran,t.status_pesanan,t.metode_pembayaran,p.bukti_pembayaran,p.url_pembayaran,p.va_number FROM tbl_transaksi t LEFT JOIN tbl_pembayaran p ON p.id_transaksi=t.id_transaksi WHERE t.id_pelanggan=? ORDER BY t.id_transaksi DESC LIMIT 8');
     $trxStmt->execute([(int)$profile['id_pelanggan']]);
     $transactions = $trxStmt->fetchAll();
 }
@@ -35,7 +48,7 @@ function portal_money($value): string { return 'Rp ' . number_format((float)$val
 </style></head><body>
 <header class="top"><a class="logo" href="<?=e(url('portal'))?>"><img src="<?=e(BASE_URL)?>/assets/images/copy.png" alt="Logo WarungMadura" style="height:58px;width:58px;object-fit:cover;border-radius:14px;box-shadow:0 6px 14px rgba(207,104,18,.18)"><span class="ms-2">Warung<span>Madura</span></span></a><div class="d-flex align-items-center gap-3"><span class="pill"><i class="bi bi-person-check me-1"></i> Akun Pelanggan</span><a class="btn btn-outline-secondary btn-sm" href="<?=e(url('logout'))?>"><i class="bi bi-box-arrow-right me-1"></i>Keluar</a></div></header>
 <main class="wrap">
-<div class="welcome"><small>PORTAL MEMBER</small><h1>Halo, <?=e($profile['nama_pelanggan'] ?? $loggedUser['nama_lengkap'])?>!</h1><p>Belanja dengan QRIS dan pantau status pesanan serta bukti pembayaranmu di sini.</p></div>
+<div class="welcome"><small>PORTAL MEMBER</small><h1>Halo, <?=e($profile['nama_pelanggan'] ?? $loggedUser['nama_lengkap'])?>!</h1><p>Belanja dengan metode pembayaran Duitku dan pantau status pesananmu di sini.</p></div>
 <?php if($flashMessage): ?><div class="alert alert-<?=e($flashMessage['type'])?>"><?=e($flashMessage['message'])?></div><?php endif; ?>
 <?php if(!$profile):?><div class="alert alert-warning">Akun ini belum terhubung ke profil pelanggan. Silakan hubungi Admin WarungMadura untuk menghubungkan nomor member.</div><?php else:?>
 <div class="row g-3 mb-3"><div class="col-md-6"><div class="cardbox"><div class="d-flex justify-content-between"><div><div class="balance-label">Saldo Tabungan (simulasi)</div><div class="balance-value"><?=portal_money($balances['tabungan'])?></div></div><div class="mini-icon"><i class="bi bi-piggy-bank"></i></div></div></div></div><div class="col-md-6"><div class="cardbox"><div class="d-flex justify-content-between"><div><div class="balance-label">Saldo E-Wallet (simulasi)</div><div class="balance-value"><?=portal_money($balances['ewallet'])?></div></div><div class="mini-icon"><i class="bi bi-wallet2"></i></div></div></div></div></div>
@@ -52,13 +65,16 @@ function portal_money($value): string { return 'Rp ' . number_format((float)$val
             <?php if(!$products): ?><div class="cardbox w-100 empty">Belum ada produk dengan stok tersedia.</div><?php endif; ?>
         </div></div>
         <div class="col-lg-4"><div class="cardbox cart-box"><h5 class="fw-bold">Keranjang</h5><div id="userCartItems" class="user-cart-items"><p class="empty mb-0">Keranjang masih kosong.</p></div><div class="cart-total-line"><span>Total</span><b id="userCartTotal"><?=portal_money(0)?></b></div>
-        <?php if($qrisImage):?><div class="dana-qris-panel mb-3"><b><i class="bi bi-qr-code me-1"></i> QRIS Pembayaran</b><img class="dana-qris-image my-2" src="<?=e($qrisImage)?>" alt="QRIS WarungMadura"><small class="d-block">Bayar tepat sebesar total pesanan. Setelah checkout, unggah screenshot bukti pembayaran pada riwayat transaksi.</small></div><?php else:?><div class="alert alert-warning small">QRIS toko belum tersedia. Silakan hubungi Admin.</div><?php endif;?>
-        <form method="post" id="userCheckoutForm"><?=Csrf::field()?><input type="hidden" name="action" value="customer_checkout"><input type="hidden" name="_return" value="portal"><input type="hidden" name="cart_json" id="userCartJson" value="[]"><p class="muted small">Pesanan menunggu verifikasi pembayaran Admin/Kasir. Stok ditahan saat checkout dan dikembalikan jika pesanan dibatalkan.</p><button class="btn btn-main w-100" id="userCheckoutButton" disabled><i class="bi bi-bag-check me-2"></i>Buat Pesanan QRIS</button></form></div></div>
+        <form method="post" id="userCheckoutForm"><?=Csrf::field()?><input type="hidden" name="action" value="customer_checkout"><input type="hidden" name="_return" value="portal"><input type="hidden" name="cart_json" id="userCartJson" value="[]"><input type="hidden" name="payment_method" id="userPaymentMethod" value="">
+        <div class="mt-3 mb-3"><b class="d-block mb-2"><i class="bi bi-credit-card me-1"></i>Pilih metode pembayaran</b><div id="duitkuMethods" class="d-grid gap-2"><div class="alert alert-light small mb-0">Tambahkan produk untuk melihat metode pembayaran yang tersedia.</div></div></div>
+        <p class="muted small">Pesanan diproses otomatis setelah pembayaran dikonfirmasi oleh Duitku.</p><button class="btn btn-main w-100" id="userCheckoutButton" disabled><i class="bi bi-bag-check me-2"></i>Lanjutkan ke Pembayaran Duitku</button></form></div></div>
     </div>
 </section>
 <div class="row g-3"><div class="col-lg-5"><div class="cardbox"><h5 class="fw-bold mb-3">Profil Member</h5><div class="profile-line"><span>Nomor Member</span><b><?=e($profile['no_member'])?></b></div><div class="profile-line"><span>Nama</span><b><?=e($profile['nama_pelanggan'])?></b></div><div class="profile-line"><span>Username</span><b><?=e($loggedUser['username'])?></b></div><div class="profile-line"><span>Nomor HP</span><b><?=e($profile['no_hp']?:'—')?></b></div><div class="profile-line"><span>Status</span><b><?=e(ucfirst($profile['status_member']))?></b></div><p class="muted small mt-3 mb-0">Saldo bersifat simulasi. Pembelian dari katalog akan dicatat sebagai pesanan online.</p></div></div>
-<div class="col-lg-7"><div class="cardbox"><div class="d-flex align-items-center justify-content-between mb-3"><h5 class="fw-bold mb-0">Riwayat Transaksi</h5><span class="pill">8 transaksi terbaru</span></div><div class="table-responsive"><table class="table align-middle"><thead><tr><th>Nomor / tanggal</th><th>Total</th><th>Status &amp; bukti</th><th>Nota</th></tr></thead><tbody><?php if(!$transactions):?><tr><td colspan="4" class="empty">Belum ada transaksi.</td></tr><?php endif;?><?php foreach($transactions as $trx):?><tr><td><b><?=e($trx['kode_transaksi'])?></b><br><small class="muted"><?=e(date('d/m/Y H:i',strtotime($trx['tanggal_transaksi'])))?></small></td><td><?=portal_money($trx['total_belanja'])?></td><td>
-<?php if($trx['metode_pembayaran']==='qris_dana' && $trx['status_pembayaran']==='menunggu' && !$trx['bukti_pembayaran']):?>
+<div class="col-lg-7"><div class="cardbox"><div class="d-flex align-items-center justify-content-between mb-3"><h5 class="fw-bold mb-0">Riwayat Transaksi</h5><span class="pill">8 transaksi terbaru</span></div><div class="table-responsive"><table class="table align-middle"><thead><tr><th>Nomor / tanggal</th><th>Total</th><th>Status pembayaran</th><th>Nota</th></tr></thead><tbody><?php if(!$transactions):?><tr><td colspan="4" class="empty">Belum ada transaksi.</td></tr><?php endif;?><?php foreach($transactions as $trx):?><tr><td><b><?=e($trx['kode_transaksi'])?></b><br><small class="muted"><?=e(date('d/m/Y H:i',strtotime($trx['tanggal_transaksi'])))?></small></td><td><?=portal_money($trx['total_belanja'])?></td><td>
+<?php if($trx['metode_pembayaran']==='duitku' && $trx['status_pembayaran']==='menunggu' && $trx['url_pembayaran']):?><span class="badge text-bg-warning">Menunggu pembayaran Duitku</span><?php if($trx['va_number']):?><div class="small mt-2">Nomor Virtual Account<br><b class="user-select-all"><?=e($trx['va_number'])?></b></div><?php endif;?><br><a class="btn btn-sm btn-main mt-2" href="<?=e($trx['url_pembayaran'])?>" target="_blank" rel="noopener"><i class="bi bi-box-arrow-up-right me-1"></i>Buka / lanjutkan pembayaran</a>
+<?php elseif($trx['metode_pembayaran']==='duitku' && $trx['status_pembayaran']==='menunggu'):?><span class="badge text-bg-danger">Invoice perlu bantuan Admin</span><?php if($trx['va_number']):?><div class="small mt-2">Nomor Virtual Account<br><b class="user-select-all"><?=e($trx['va_number'])?></b></div><?php endif;?><br><small class="muted">Tautan invoice belum tersedia. Admin/Kasir sedang memeriksa status pembayaran.</small>
+<?php elseif($trx['metode_pembayaran']==='qris_dana' && $trx['status_pembayaran']==='menunggu' && !$trx['bukti_pembayaran']):?>
 <span class="badge text-bg-warning">Menunggu pembayaran</span><form method="post" enctype="multipart/form-data" class="mt-2"><?=Csrf::field()?><input type="hidden" name="action" value="customer_upload_payment_proof"><input type="hidden" name="_return" value="portal"><input type="hidden" name="id_transaksi" value="<?=(int)$trx['id_transaksi']?>"><input class="form-control form-control-sm mb-2" type="file" name="bukti_pembayaran" accept="image/jpeg,image/png,image/webp" required><small class="muted d-block mb-2">Screenshot JPG, PNG, atau WebP (maks. 5 MB).</small><button class="btn btn-sm btn-main"><i class="bi bi-upload me-1"></i>Unggah bukti</button></form><form method="post" class="mt-2" onsubmit="return confirm('Batalkan pesanan ini? Stok akan dikembalikan.');"><?=Csrf::field()?><input type="hidden" name="action" value="customer_cancel_order"><input type="hidden" name="_return" value="portal"><input type="hidden" name="id_transaksi" value="<?=(int)$trx['id_transaksi']?>"><button class="btn btn-sm btn-outline-danger">Batalkan pesanan</button></form>
 <?php elseif($trx['metode_pembayaran']==='qris_dana' && $trx['status_pembayaran']==='menunggu' && $trx['bukti_pembayaran']):?><span class="badge text-bg-info">Menunggu verifikasi</span><br><a class="btn btn-sm btn-light mt-2" href="<?=e(url('payment_proof',['id'=>$trx['id_transaksi']]))?>" target="_blank" rel="noopener"><i class="bi bi-image me-1"></i>Lihat bukti</a>
 <?php elseif($trx['status_pembayaran']==='gagal'):?><span class="badge text-bg-danger">Ditolak / dibatalkan</span><br><small class="muted">Silakan buat pesanan baru bila masih ingin berbelanja.</small>
@@ -73,9 +89,110 @@ function portal_money($value): string { return 'Rp ' . number_format((float)$val
     var totalNode = document.getElementById('userCartTotal');
     var cartJson = document.getElementById('userCartJson');
     var checkoutButton = document.getElementById('userCheckoutButton');
+    var methodsNode = document.getElementById('duitkuMethods');
+    var selectedPaymentMethod = document.getElementById('userPaymentMethod');
     var form = document.getElementById('userCheckoutForm');
     var formatter = new Intl.NumberFormat('id-ID');
-    var qrisReady = <?= $qrisImage ? 'true' : 'false' ?>;
+    var duitkuReady = <?= $duitkuReady ? 'true' : 'false' ?>;
+    var methodCache = {};
+    var methodTimer = null;
+    var loadingMethods = false;
+    var requestedAmount = 0;
+
+    function showMethods(methods, amount) {
+        if (amount !== requestedAmount) return;
+        methodsNode.replaceChildren();
+        if (!methods.length) {
+            var empty = document.createElement('div');
+            empty.className = 'alert alert-warning small mb-0';
+            empty.textContent = 'Belum ada metode pembayaran aktif untuk nominal ini.';
+            methodsNode.appendChild(empty);
+            selectedPaymentMethod.value = '';
+            return;
+        }
+        var oldSelection = selectedPaymentMethod.value;
+        var hasOldSelection = methods.some(function (method) { return method.paymentMethod === oldSelection; });
+        methods.forEach(function (method) {
+            var label = document.createElement('label');
+            label.className = 'border rounded-3 p-2 d-flex align-items-center gap-2';
+            label.style.cursor = 'pointer';
+            var radio = document.createElement('input');
+            radio.type = 'radio';
+            radio.name = 'duitku_method_choice';
+            radio.value = method.paymentMethod;
+            radio.checked = hasOldSelection ? method.paymentMethod === oldSelection : false;
+            radio.addEventListener('change', function () {
+                selectedPaymentMethod.value = method.paymentMethod;
+                checkoutButton.disabled = !duitkuReady || loadingMethods || !selectedPaymentMethod.value;
+            });
+            var details = document.createElement('span');
+            details.className = 'flex-grow-1';
+            var title = document.createElement('b');
+            title.className = 'd-block';
+            title.textContent = method.paymentName;
+            var fee = document.createElement('small');
+            fee.className = 'muted';
+            var feeValue = Number(method.totalFee || 0);
+            fee.textContent = 'Biaya: Rp ' + formatter.format(Number.isFinite(feeValue) ? feeValue : 0);
+            details.append(title, fee);
+            label.append(radio, details);
+            methodsNode.appendChild(label);
+        });
+        if (!hasOldSelection) selectedPaymentMethod.value = '';
+        checkoutButton.disabled = !duitkuReady || loadingMethods || !selectedPaymentMethod.value;
+    }
+
+    function loadPaymentMethods(amount) {
+        requestedAmount = amount;
+        if (!duitkuReady || amount < 1) return;
+        if (amount < 10000) {
+            loadingMethods = false;
+            selectedPaymentMethod.value = '';
+            checkoutButton.disabled = true;
+            methodsNode.replaceChildren();
+            var minimum = document.createElement('div');
+            minimum.className = 'alert alert-warning small mb-0';
+            minimum.textContent = 'Minimum pembayaran Duitku Rp 10.000. Tambahkan produk lain.';
+            methodsNode.appendChild(minimum);
+            return;
+        }
+        if (methodCache[amount]) {
+            loadingMethods = false;
+            showMethods(methodCache[amount], amount);
+            return;
+        }
+        loadingMethods = true;
+        selectedPaymentMethod.value = '';
+        checkoutButton.disabled = true;
+        methodsNode.replaceChildren();
+        var loading = document.createElement('div');
+        loading.className = 'alert alert-light small mb-0';
+        loading.textContent = 'Memuat metode pembayaran Duitku…';
+        methodsNode.appendChild(loading);
+        window.clearTimeout(methodTimer);
+        methodTimer = window.setTimeout(function () {
+            fetch(<?=json_encode(url('duitku_methods'))?> + '&amount=' + encodeURIComponent(amount), {credentials:'same-origin'})
+                .then(function (response) { if (!response.ok) throw new Error('Metode pembayaran gagal dimuat.'); return response.json(); })
+                .then(function (data) {
+                    if (amount !== requestedAmount) return;
+                    if (!Array.isArray(data.methods)) throw new Error(data.error || 'Metode pembayaran gagal dimuat.');
+                    methodCache[amount] = data.methods;
+                    loadingMethods = false;
+                    showMethods(data.methods, amount);
+                })
+                .catch(function () {
+                    if (amount !== requestedAmount) return;
+                    loadingMethods = false;
+                    methodsNode.replaceChildren();
+                    var error = document.createElement('div');
+                    error.className = 'alert alert-warning small mb-0';
+                    error.textContent = 'Metode pembayaran belum dapat dimuat. Coba lagi beberapa saat.';
+                    methodsNode.appendChild(error);
+                    selectedPaymentMethod.value = '';
+                    checkoutButton.disabled = true;
+                });
+        }, 350);
+    }
 
     function renderCart() {
         list.replaceChildren();
@@ -114,7 +231,19 @@ function portal_money($value): string { return 'Rp ' . number_format((float)$val
         });
         totalNode.textContent = 'Rp ' + formatter.format(total);
         cartJson.value = JSON.stringify(items.map(function (item) { return {id:item.id,qty:item.qty}; }));
-        checkoutButton.disabled = !items.length || !qrisReady;
+        checkoutButton.disabled = !items.length || !duitkuReady || loadingMethods || !selectedPaymentMethod.value;
+        if (!items.length) {
+            requestedAmount = 0;
+            loadingMethods = false;
+            selectedPaymentMethod.value = '';
+            methodsNode.replaceChildren();
+            var emptyMethods = document.createElement('div');
+            emptyMethods.className = 'alert alert-light small mb-0';
+            emptyMethods.textContent = duitkuReady ? 'Tambahkan produk untuk melihat metode pembayaran yang tersedia.' : 'Konfigurasi pembayaran belum aktif.';
+            methodsNode.appendChild(emptyMethods);
+        } else {
+            loadPaymentMethods(total);
+        }
     }
 
     document.querySelectorAll('.add-to-cart').forEach(function (button) {
@@ -126,7 +255,7 @@ function portal_money($value): string { return 'Rp ' . number_format((float)$val
         });
     });
     form.addEventListener('submit', function (event) {
-        if (!Object.keys(cart).length) event.preventDefault();
+        if (!Object.keys(cart).length || !selectedPaymentMethod.value || loadingMethods) event.preventDefault();
     });
 })();
 </script>

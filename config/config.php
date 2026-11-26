@@ -12,6 +12,12 @@ define('DB_NAME', 'db_warungmadura');
 define('DB_USER', 'root');
 define('DB_PASS', '');
 
+// Rahasia Duitku dimuat dari config/duitku.local.php (tidak disertakan di Git).
+$duitkuLocalConfig = __DIR__ . '/duitku.local.php';
+if (is_file($duitkuLocalConfig)) {
+    require_once $duitkuLocalConfig;
+}
+
 date_default_timezone_set('Asia/Jakarta');
 if (session_status() !== PHP_SESSION_ACTIVE) {
     $secure = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off');

@@ -2,6 +2,27 @@
 declare(strict_types=1);
 require_once __DIR__ . '/app/bootstrap.php';
 
+if (($_GET['page'] ?? '') === 'duitku_callback') {
+    Duitku::handleCallback($db);
+}
+if (($_GET['page'] ?? '') === 'duitku_methods') {
+    header('Content-Type: application/json; charset=utf-8');
+    if (!Auth::check() || (!Auth::canUseOperations() && (Auth::user()['role'] ?? '') !== 'pelanggan')) {
+        http_response_code(403);
+        echo json_encode(['error'=>'Akses tidak diizinkan.']);
+        exit;
+    }
+    try {
+        $amount = max(0, min(100000000, (int)($_GET['amount'] ?? 0)));
+        echo json_encode(['methods'=>Duitku::getPaymentMethods($amount)], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    } catch (Throwable $error) {
+        error_log('[Duitku payment methods] ' . $error->getMessage());
+        http_response_code(502);
+        echo json_encode(['error'=>'Metode pembayaran sedang tidak dapat dimuat.']);
+    }
+    exit;
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     Actions::handle($db);
 }

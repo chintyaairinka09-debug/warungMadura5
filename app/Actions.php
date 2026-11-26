@@ -50,6 +50,8 @@ final class Actions
                 case 'receive_stock': self::receiveStock($db, $userId); break;
                 case 'checkout': self::checkout($db, $userId); break;
                 case 'update_order_status': self::updateOrderStatus($db, $userId); break;
+                case 'retry_duitku_invoice': self::retryDuitkuInvoice($db, $userId); break;
+                case 'check_duitku_status': self::checkDuitkuStatus($db, $userId); break;
                 case 'approve_customer_payment': self::reviewCustomerPayment($db, $userId, true); break;
                 case 'reject_customer_payment': self::reviewCustomerPayment($db, $userId, false); break;
                 case 'topup_balance': self::topupBalance($db, $userId); break;
@@ -534,9 +536,10 @@ final class Actions
 
     private static function customerCheckout(PDO $db, int $userId): void
     {
-        $profileStmt = $db->prepare("SELECT id_pelanggan FROM tbl_pelanggan WHERE id_pengguna=? AND status_member='aktif' LIMIT 1");
+        $profileStmt = $db->prepare("SELECT id_pelanggan,nama_pelanggan,no_hp,email FROM tbl_pelanggan WHERE id_pengguna=? AND status_member='aktif' LIMIT 1");
         $profileStmt->execute([$userId]);
-        $customerId = (int)$profileStmt->fetchColumn();
+        $customer = $profileStmt->fetch();
+        $customerId = (int)($customer['id_pelanggan'] ?? 0);
         if ($customerId < 1) self::back('portal', 'Akun ini belum terhubung ke member aktif.', 'danger');
 
         $cart = json_decode((string)($_POST['cart_json'] ?? '[]'), true);
@@ -551,13 +554,8 @@ final class Actions
             }
         }
         if (!$normalized) self::back('portal', 'Isi keranjang tidak valid.', 'warning');
-
-        $qrisDirectory = __DIR__ . '/../uploads/qris';
-        $pointer = $qrisDirectory . '/current.txt';
-        $filename = is_file($pointer) ? trim((string)file_get_contents($pointer)) : '';
-        if (!preg_match('/\Adana-qris\.(?:jpg|png|webp)\z/i', $filename) || !is_file($qrisDirectory . '/' . $filename)) {
-            self::back('portal', 'QRIS toko belum tersedia. Silakan hubungi Admin sebelum membuat pesanan.', 'warning');
-        }
+        $paymentMethod = strtoupper(trim((string)($_POST['payment_method'] ?? '')));
+        if (!preg_match('/\A[A-Z0-9]{2}\z/', $paymentMethod)) self::back('portal','Pilih metode pembayaran Duitku terlebih dahulu.','warning');
 
         $db->beginTransaction();
         $items = [];
@@ -574,9 +572,13 @@ final class Actions
             $subtotal += $lineTotal;
             $items[] = ['product'=>$product,'quantity'=>$quantity,'total'=>$lineTotal];
         }
+        if ($subtotal < 10000) {
+            $db->rollBack();
+            self::back('portal','Minimum pembayaran Duitku adalah Rp 10.000. Tambahkan produk lain ke keranjang.','warning');
+        }
 
         $code = 'WM-ON-' . date('ymd-His') . '-' . random_int(100,999);
-        $db->prepare("INSERT INTO tbl_transaksi (kode_transaksi,id_pelanggan,id_kasir,jenis_transaksi,status_pesanan,status_pembayaran,metode_pembayaran,metode_penerimaan,tanggal_transaksi,subtotal,diskon,biaya_pengiriman,total_belanja,jumlah_bayar,kembalian,catatan) VALUES (?,?,NULL,'online','menunggu','menunggu','qris_dana','ambil_toko',NOW(),?,0,0,?,0,0,'Menunggu bukti pembayaran QRIS')")
+        $db->prepare("INSERT INTO tbl_transaksi (kode_transaksi,id_pelanggan,id_kasir,jenis_transaksi,status_pesanan,status_pembayaran,metode_pembayaran,metode_penerimaan,tanggal_transaksi,subtotal,diskon,biaya_pengiriman,total_belanja,jumlah_bayar,kembalian,catatan) VALUES (?,?,NULL,'online','menunggu','menunggu','duitku','ambil_toko',NOW(),?,0,0,?,0,0,'Menunggu pembayaran Duitku')")
             ->execute([$code,$customerId,$subtotal,$subtotal]);
         $transactionId = (int)$db->lastInsertId();
 
@@ -592,11 +594,78 @@ final class Actions
                 ->execute([$product['id_produk'],$transactionId,-$quantity,$before,$after]);
         }
 
-        $db->prepare("INSERT INTO tbl_pembayaran (id_transaksi,metode_pembayaran,jumlah_bayar,status_pembayaran) VALUES (?,'qris_dana',?,'menunggu')")
-            ->execute([$transactionId,$subtotal]);
+        $db->prepare("INSERT INTO tbl_pembayaran (id_transaksi,metode_pembayaran,kode_metode_gateway,jumlah_bayar,status_pembayaran) VALUES (?,'duitku',?,?,'menunggu')")
+            ->execute([$transactionId,$paymentMethod,$subtotal]);
         $db->commit();
         log_activity($db,$userId,'checkout_online','tbl_transaksi',$transactionId,'Pesanan pelanggan '.$code);
-        self::back('portal','Pesanan '.$code.' berhasil dibuat. Bayar dengan QRIS toko, lalu unggah bukti pembayaran pada riwayat transaksi.');
+        try {
+            $invoice = Duitku::createInvoice($db, $transactionId, $code, (int)round($subtotal), $paymentMethod, $customer, $items);
+        } catch (Throwable $error) {
+            error_log('[Duitku invoice] ' . $error->getMessage());
+            $db->prepare("UPDATE tbl_transaksi SET catatan='Gagal membuka invoice Duitku; perlu pemeriksaan Admin' WHERE id_transaksi=? AND status_pembayaran='menunggu'")
+                ->execute([$transactionId]);
+            self::back('portal','Pesanan sudah tercatat, tetapi halaman pembayaran belum dapat dibuka. Jangan checkout ulang; hubungi Admin untuk memeriksa status invoice.','warning');
+        }
+        header('Location: ' . $invoice['paymentUrl'], true, 303);
+        exit;
+    }
+
+    private static function retryDuitkuInvoice(PDO $db, int $userId): void
+    {
+        if (!Auth::canUseOperations()) self::back('dashboard','Aksi ini hanya dapat dilakukan Admin/Kasir.','danger');
+        $transactionId = (int)($_POST['id_transaksi'] ?? 0);
+        if ($transactionId < 1) self::back('payments','Pesanan Duitku tidak valid.','warning');
+
+        $stmt = $db->prepare("SELECT t.kode_transaksi,t.total_belanja,t.status_pembayaran,t.metode_pembayaran,p.status_pembayaran AS payment_status,p.kode_metode_gateway,p.url_pembayaran,p.referensi_simulasi,c.nama_pelanggan,c.no_hp,c.email FROM tbl_transaksi t JOIN tbl_pembayaran p ON p.id_transaksi=t.id_transaksi JOIN tbl_pelanggan c ON c.id_pelanggan=t.id_pelanggan WHERE t.id_transaksi=? AND t.jenis_transaksi='online'");
+        $stmt->execute([$transactionId]);
+        $order = $stmt->fetch();
+        if (!$order || $order['metode_pembayaran'] !== 'duitku' || $order['status_pembayaran'] !== 'menunggu' || $order['payment_status'] !== 'menunggu') {
+            self::back('payments','Pesanan tidak lagi menunggu pembayaran Duitku.','warning');
+        }
+        if (!empty($order['url_pembayaran']) || !empty($order['referensi_simulasi'])) {
+            self::back('payments','Invoice sudah tercatat. Buka tautan invoice pada daftar pembayaran online.','info');
+        }
+
+        $paymentMethod = strtoupper((string)($order['kode_metode_gateway'] ?? ''));
+        if (!preg_match('/\A[A-Z0-9]{2}\z/', $paymentMethod)) {
+            $availableMethods = Duitku::getPaymentMethods((int)round((float)$order['total_belanja']));
+            $paymentMethod = (string)($availableMethods[0]['paymentMethod'] ?? '');
+        }
+        if (!preg_match('/\A[A-Z0-9]{2}\z/', $paymentMethod)) {
+            self::back('payments','Duitku belum menyediakan metode pembayaran untuk pesanan ini.','warning');
+        }
+
+        $detailStmt = $db->prepare('SELECT nama_produk,harga_satuan,jumlah FROM tbl_detail_transaksi WHERE id_transaksi=? ORDER BY id_detail');
+        $detailStmt->execute([$transactionId]);
+        $items = array_map(static function (array $item): array {
+            return ['product'=>['nama_produk'=>$item['nama_produk'],'harga_jual'=>$item['harga_satuan']], 'quantity'=>(int)$item['jumlah']];
+        }, $detailStmt->fetchAll());
+        if (!$items) self::back('payments','Rincian produk pesanan tidak ditemukan.','danger');
+
+        Duitku::createInvoice($db,$transactionId,(string)$order['kode_transaksi'],(int)round((float)$order['total_belanja']),$paymentMethod,$order,$items);
+        $db->prepare("UPDATE tbl_transaksi SET catatan='Menunggu pembayaran Duitku' WHERE id_transaksi=? AND status_pembayaran='menunggu'")->execute([$transactionId]);
+        log_activity($db,$userId,'buat_ulang_invoice_duitku','tbl_transaksi',$transactionId,'Admin/Kasir membuat invoice ulang untuk '.$order['kode_transaksi']);
+        self::back('payments','Invoice berhasil dibuat ulang. Tautan sekarang tersedia untuk pelanggan dan Admin/Kasir.');
+    }
+
+    private static function checkDuitkuStatus(PDO $db, int $userId): void
+    {
+        if (!Auth::canUseOperations()) self::back('dashboard','Aksi ini hanya dapat dilakukan Admin/Kasir.','danger');
+        $transactionId = (int)($_POST['id_transaksi'] ?? 0);
+        $stmt = $db->prepare("SELECT kode_transaksi FROM tbl_transaksi WHERE id_transaksi=? AND metode_pembayaran='duitku' AND status_pembayaran='menunggu'");
+        $stmt->execute([$transactionId]);
+        $orderCode = (string)$stmt->fetchColumn();
+        if ($orderCode === '') self::back('payments','Pesanan Duitku tidak ditemukan atau sudah selesai.','warning');
+        $status = Duitku::checkTransactionStatus($db,$orderCode);
+        if ($status === 'lunas') {
+            log_activity($db,$userId,'cek_status_duitku','tbl_transaksi',$transactionId,'Duitku mengonfirmasi pembayaran '.$orderCode);
+            self::back('payments','Duitku mengonfirmasi pembayaran berhasil. Pesanan sekarang diproses.');
+        }
+        if ($status === 'gagal') {
+            log_activity($db,$userId,'cek_status_duitku','tbl_transaksi',$transactionId,'Duitku menyatakan pembayaran gagal/kedaluwarsa '.$orderCode);
+            self::back('payments','Duitku menyatakan invoice gagal atau kedaluwarsa. Stok sudah dikembalikan.','warning');
+        }
+        self::back('payments','Status dari Duitku masih menunggu pembayaran.','info');
     }
 
     private static function uploadPaymentProof(PDO $db, int $userId): void

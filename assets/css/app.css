@@ -1914,3 +1914,359 @@ a {
         justify-content: space-between
     }
 }
+
+/* =========================================================
+   PRODUCTS + TRANSACTIONS PAGE LAYOUT FIX
+   Scoped to these two pages to avoid changing other modules.
+   ========================================================= */
+.products-page,
+.transactions-page {
+    min-width: 0;
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+.products-page .btn,
+.transactions-page .btn {
+    font-size: 13px;
+    padding: .48rem .75rem;
+}
+
+.products-page .form-control,
+.products-page .form-select,
+.transactions-page .form-control,
+.transactions-page .form-select {
+    min-width: 0;
+    font-size: 13px;
+    padding: .48rem .7rem;
+}
+
+/* Products table: keep columns readable and confine overflow to its wrapper. */
+.products-page .table-responsive {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+.products-page .products-table {
+    width: 100%;
+    min-width: 850px;
+    margin-bottom: 0;
+    table-layout: auto;
+    white-space: normal;
+    font-size: 13px;
+}
+
+.products-page .products-table th,
+.products-page .products-table td {
+    vertical-align: middle;
+}
+
+.products-page .products-table th {
+    white-space: nowrap;
+}
+
+.products-page .products-table td:nth-child(1) { min-width: 180px; }
+.products-page .products-table td:nth-child(2) { min-width: 145px; }
+.products-page .products-table td:nth-child(3) { min-width: 110px; }
+.products-page .products-table td:nth-child(4),
+.products-page .products-table td:nth-child(5),
+.products-page .products-table td:nth-child(6),
+.products-page .products-table td:nth-child(7) { white-space: nowrap; }
+
+.products-page .product-cell {
+    min-width: 0;
+    gap: 9px;
+}
+
+.products-page .product-cell > div:last-child {
+    min-width: 0;
+}
+
+.products-page .product-cell b {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    line-height: 1.35;
+}
+
+.products-page .product-thumb {
+    flex: 0 0 38px;
+    width: 38px;
+    height: 38px;
+    overflow: hidden;
+}
+
+.products-page .product-thumb img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    max-width: 100%;
+    object-fit: contain;
+}
+
+.products-page .product-barcode {
+    display: block;
+    width: 132px;
+    max-width: 100%;
+    height: 30px;
+    margin-top: 4px;
+    overflow: hidden;
+}
+
+.products-page .table-actions {
+    flex-wrap: nowrap;
+    align-items: center;
+}
+
+.products-page .table-actions .btn {
+    width: 31px;
+    height: 31px;
+    padding: 0;
+}
+
+.products-page .filter-toolbar {
+    align-items: flex-start;
+}
+
+.products-page .filter-form {
+    min-width: 0;
+}
+
+.products-page .search-box {
+    flex: 1 1 230px;
+    min-width: 180px;
+}
+
+/* Transactions / POS: scanner is a full-width block above the product grid. */
+.transactions-page .pos-layout,
+.transactions-page .pos-layout > [class*="col-"] {
+    min-width: 0;
+}
+
+.transactions-page .product-picker,
+.transactions-page .cart-panel {
+    min-width: 0;
+}
+
+.transactions-page .pos-filter {
+    align-items: stretch;
+}
+
+.transactions-page .pos-filter .search-box {
+    flex: 1 1 180px;
+    min-width: 0;
+}
+
+.transactions-page .pos-filter .form-select {
+    flex: 0 0 165px;
+    width: 165px;
+}
+
+.transactions-page .pos-scanner-box {
+    display: grid;
+    grid-template-columns: 38px minmax(0, 1fr);
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    margin: 0 0 12px;
+    padding: 11px;
+    border: 1px dashed #d7e4da;
+    border-radius: 10px;
+    background: #f8fbf8;
+}
+
+.transactions-page .pos-scanner-box > i {
+    display: grid;
+    place-items: center;
+    width: 38px;
+    height: 38px;
+    border-radius: 9px;
+    background: #eaf5ed;
+    color: var(--green);
+    font-size: 19px;
+}
+
+.transactions-page .pos-scanner-content {
+    min-width: 0;
+}
+
+.transactions-page .pos-scanner-content .form-control {
+    width: 100%;
+}
+
+.transactions-page .pos-scanner-content small {
+    display: block;
+    margin-top: 5px !important;
+    font-size: 11px;
+    line-height: 1.4;
+    white-space: normal;
+}
+
+.transactions-page .pos-product-grid {
+    width: 100%;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    align-content: start;
+    gap: 10px;
+    max-height: 650px;
+    overflow: auto;
+    padding: 2px;
+}
+
+.transactions-page .pos-product-card {
+    width: 100%;
+    min-width: 0;
+    overflow: hidden;
+    padding: 11px;
+}
+
+.transactions-page .pos-product-thumb {
+    flex: 0 0 48px;
+    width: 48px;
+    height: 48px;
+    overflow: hidden;
+}
+
+.transactions-page .pos-product-thumb img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    max-width: 100%;
+    object-fit: contain;
+}
+
+.transactions-page .pos-product-name {
+    min-height: 35px;
+    overflow-wrap: anywhere;
+}
+
+.transactions-page .pos-product-meta {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.transactions-page .pos-product-bottom {
+    flex-wrap: wrap;
+    align-items: flex-start;
+}
+
+.transactions-page .cart-items {
+    min-width: 0;
+}
+
+@media (max-width: 1199.98px) {
+    .transactions-page .pos-product-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 767.98px) {
+    .products-page .page-heading .heading-actions {
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    .products-page .filter-toolbar {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .products-page .filter-form {
+        width: 100%;
+    }
+
+    .products-page .filter-form .search-box {
+        flex: 1 1 100%;
+        min-width: 0;
+    }
+
+    .products-page .filter-form .form-select {
+        flex: 1 1 135px;
+        width: auto;
+        min-width: 0;
+    }
+
+    .products-page .result-count {
+        white-space: normal;
+    }
+
+    .transactions-page .pos-filter {
+        flex-direction: column;
+    }
+
+    .transactions-page .pos-filter .form-select {
+        flex: 1 1 auto;
+        width: 100%;
+    }
+
+    .transactions-page .pos-product-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        max-height: 560px;
+    }
+
+    .transactions-page .cart-panel {
+        position: static;
+    }
+}
+
+@media (max-width: 420px) {
+    .transactions-page .pos-product-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.transactions-page .pos-product-grid > .empty-state {
+    grid-column: 1 / -1;
+}
+
+/* =========================================================
+   FIXES FOR BROKEN LAYOUTS (QRIS, PRODUCT IMAGES, POS)
+   ========================================================= */
+
+/* 1. Memperbaiki gambar QRIS yang terlalu besar di panel admin */
+.dana-qris-preview {
+    max-width: 120px !important;
+    max-height: 120px !important;
+    object-fit: contain !important;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: #fff;
+    padding: 4px;
+    flex: none;
+}
+
+/* 2. Memperbaiki gambar produk yang tumpang tindih di Tabel Produk */
+.products-page .product-thumb {
+    position: relative !important;
+    overflow: hidden !important;
+}
+
+.products-page .product-thumb img {
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: contain !important;
+}
+
+/* 3. Memperbaiki gambar produk di dalam grid Kasir (POS) */
+.transactions-page .pos-product-thumb {
+    position: relative !important;
+    overflow: hidden !important;
+}
+
+.transactions-page .pos-product-thumb img {
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: contain !important;
+}
+
+/* 4. Mencegah kartu produk POS melar dan merusak grid */
+.transactions-page .pos-product-card {
+    overflow: hidden !important;
+    min-width: 0 !important;
+}

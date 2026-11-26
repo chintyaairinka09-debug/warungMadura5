@@ -1,7 +1,11 @@
 <?php
 $user = Auth::user();
 $current = $page;
-$pageTitle = $current === 'payments' ? 'Verifikasi QRIS' : ucwords(str_replace('_',' ',$current));
+$pageTitle = $current === 'payments' ? 'Pembayaran Online' : ucwords(str_replace('_',' ',$current));
+$duitkuIssueCount = 0;
+if (Auth::canUseOperations()) {
+    $duitkuIssueCount = (int)$db->query("SELECT COUNT(*) FROM tbl_transaksi t JOIN tbl_pembayaran p ON p.id_transaksi=t.id_transaksi WHERE t.metode_pembayaran='duitku' AND t.status_pembayaran='menunggu' AND p.status_pembayaran='menunggu'")->fetchColumn();
+}
 $menus = [
     ['title'=>'MENU UTAMA','items'=>[
         ['dashboard','Dashboard','bi-grid-1x2'],
@@ -12,7 +16,7 @@ $menus = [
     ]],
     ['title'=>'OPERASIONAL','items'=>[
         ['stock','Stok Masuk','bi-box-arrow-in-down'],
-        ['payments','Verifikasi QRIS','bi-qr-code'],
+        ['payments','Pembayaran Online','bi-credit-card'],
         ['reports','Laporan','bi-graph-up-arrow'],
         ['suppliers','Supplier','bi-truck'],
     ]],
@@ -48,6 +52,7 @@ $flashMessage = take_flash();
                     <?php if (in_array($key,['transactions','payments'],true) && !Auth::canUseOperations()) continue; ?>
                     <a class="nav-link <?= $current === $key ? 'active' : '' ?>" href="<?= e(url($key)) ?>">
                         <i class="bi <?= e($icon) ?>"></i><span><?= e($label) ?></span>
+                        <?php if ($key === 'payments' && $duitkuIssueCount > 0): ?><span class="badge text-bg-warning ms-auto"><?=number_format($duitkuIssueCount)?></span><?php endif; ?>
                         <?php if ($key === 'products'): ?><i class="bi bi-chevron-right ms-auto nav-chevron"></i><?php endif; ?>
                     </a>
                 <?php endforeach; ?>
